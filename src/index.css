@@ -1,0 +1,56 @@
+:root {
+  font-family: 'Outfit', 'Inter', system-ui, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 210, 255, 0.2);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 210, 255, 0.4);
+}
+
+/* Leaflet Fixes */
+.leaflet-container {
+  z-index: 1;
+  filter: hue-rotate(10deg) brightness(0.95);
+}
+
+/* Tactical Scan Animation */
+@keyframes scan {
+  0% { top: 0; opacity: 0; }
+  10% { opacity: 0.8; }
+  90% { opacity: 0.8; }
+  100% { top: 100%; opacity: 0; }
+}
+
+/* Smooth scrolling for anchors */
+html {
+  scroll-behavior: smooth;
+}
