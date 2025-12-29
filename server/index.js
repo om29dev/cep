@@ -313,7 +313,74 @@ app.patch('/api/complaints/:id/status', verifyToken, checkRole(['officer']), asy
     }
 });
 
+// --- ADMIN ROUTES ---
+
+// Get all users (for Admin Dashboard)
+app.get('/api/admin/users', verifyToken, checkRole(['Admin']), async (req, res) => {
+    try {
+        // Fetch all users except the current admin to prevent self-deletion issues if needed
+        const result = await pool.query('SELECT id, username, email, role, created_at FROM users ORDER BY id ASC');
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Error fetching users' });
+    }
+});
+
+// Create Officer (Admin only)
+app.post('/api/admin/create-officer', verifyToken, checkRole(['Admin']), async (req, res) => {
+    try {
+        const { username, email, password } = req.body;
+
+        // Hash password
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const role = 'officer';
+
+        const result = await pool.query(
+            'INSERT INTO users (username, email, password, role) VALUES ($1, $2, $3, $4) RETURNING id, username, email, role',
+            [username, email, hashedPassword, role]
+        );
+
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error(err);
+        // Handle unique constraint violations (e.g., duplicate email)
+        if (err.code === '23505') {
+            return res.status(400).json({ error: 'Username or Email already exists' });
+        }
+        res.status(500).json({ error: 'Failed to create officer' });
+    }
+});
+
+// Delete User (Admin only)
+app.delete('/api/admin/users/:id', verifyToken, checkRole(['Admin']), async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Optional: Prevent deleting yourself
+        if (parseInt(id) === req.user.id) {
+            return res.status(400).json({ error: 'Cannot delete your own admin account' });
+        }
+
+        // Delete associated data first (foreign key constraints)
+        // Note: You might need to delete from 'complaints' or 'otp_verifications' first if cascading isn't set up in SQL.
+        // Assuming CASCADE or manual cleanup:
+        await pool.query('DELETE FROM complaints WHERE user_id = $1', [id]);
+        await pool.query('DELETE FROM otp_verifications WHERE email = (SELECT email FROM users WHERE id = $1)', [id]);
+
+        const result = await pool.query('DELETE FROM users WHERE id = $1 RETURNING *', [id]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        res.json({ message: 'User deleted successfully' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Error deleting user' });
+    }
+});
+
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
 });
-

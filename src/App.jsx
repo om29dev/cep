@@ -13,6 +13,7 @@ import Register from './components/auth/Register';
 import { Box, useTheme, CircularProgress } from '@mui/material';
 import { useAuth } from './AuthContext';
 import Profile from './components/Profile';
+import AdminDashboard from './components/AdminDashboard';
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
     const { user, loading } = useAuth();
@@ -70,7 +71,6 @@ function App() {
                     <Route path="/login" element={<Login />} />
                     <Route path="/register" element={<Register />} />
 
-                    {/* 2. Add Profile Route */}
                     <Route
                         path="/profile"
                         element={
@@ -89,7 +89,14 @@ function App() {
                         }
                     />
 
-                    {/* ... other routes ... */}
+                    <Route
+                        path="/admin"
+                        element={
+                            <ProtectedRoute allowedRoles={['Admin']}>
+                                <AdminDashboard />
+                            </ProtectedRoute>
+                        }
+                    />
 
                     <Route path="*" element={<Navigate to="/" />} />
                 </Routes>

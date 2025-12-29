@@ -70,6 +70,19 @@ const Navbar = () => {
 
                             {user ? (
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, ml: 1 }}>
+
+                                    {user.role === 'Admin' && (
+                                        <Button
+                                            component={RouterLink}
+                                            to="/admin"
+                                            variant="contained"
+                                            color="secondary"
+                                            size="small"
+                                        >
+                                            Admin Panel
+                                        </Button>
+                                    )}
+
                                     <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main', fontSize: '1rem' }}>
                                         {user.username[0].toUpperCase()}
                                     </Avatar>
@@ -126,7 +139,6 @@ const Navbar = () => {
 
                         {user ? (
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, ml: 1 }}>
-                                {/* UPDATED: Wrap Avatar in Link */}
                                 <Box
                                     component={RouterLink}
                                     to="/profile"
