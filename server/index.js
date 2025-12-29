@@ -79,12 +79,6 @@ const initDb = async () => {
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='complaints' AND column_name='user_id') THEN
                     ALTER TABLE complaints ADD COLUMN user_id INTEGER REFERENCES users(id);
                 END IF;
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='aadhar_no') THEN
-                    ALTER TABLE users ADD COLUMN aadhar_no TEXT;
-                END IF;
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='aadhar_photo') THEN
-                    ALTER TABLE users ADD COLUMN aadhar_photo TEXT;
-                END IF;
             END $$;
 
             CREATE TABLE IF NOT EXISTS otp_verifications (
