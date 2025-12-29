@@ -59,8 +59,6 @@ const initDb = async () => {
                 email TEXT UNIQUE NOT NULL,
                 password TEXT NOT NULL,
                 role TEXT NOT NULL DEFAULT 'citizen',
-                aadhar_no TEXT,
-                aadhar_photo TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -195,15 +193,15 @@ app.post('/api/auth/verify-otp', async (req, res) => {
 });
 
 // Auth Routes
-app.post('/api/auth/register', upload.single('aadharPhoto'), async (req, res) => {
+app.post('/api/auth/register', async (req, res) => {
     try {
-        const { username, email, password, role, aadharNo } = req.body;
-        const aadharPhotoPath = req.file ? path.join(uploadDir, req.file.filename) : null;
+        const { username, email, password } = req.body;
         const hashedPassword = await bcrypt.hash(password, 10);
+        const role = 'citizen';
 
         const result = await pool.query(
-            'INSERT INTO users (username, email, password, role, aadhar_no, aadhar_photo) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, username, email, role',
-            [username, email, hashedPassword, role || 'citizen', aadharNo, aadharPhotoPath]
+            'INSERT INTO users (username, email, password, role) VALUES ($1, $2, $3, $4) RETURNING id, username, email, role',
+            [username, email, hashedPassword, role]
         );
 
         const user = result.rows[0];

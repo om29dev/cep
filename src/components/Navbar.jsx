@@ -35,22 +35,6 @@ const Navbar = () => {
         navigate('/login');
     };
 
-    const navItems = [
-        { label: 'Home', path: '/' },
-        { label: 'About', path: '/', hash: 'about' },
-    ];
-
-    if (user?.role === 'officer') {
-        navItems.push({ label: 'Dashboard', path: '/dashboard' });
-    }
-
-    const scrollToSection = (id) => {
-        const element = document.getElementById(id);
-        if (element) {
-            element.scrollIntoView({ behavior: 'smooth' });
-        }
-    };
-
     return (
         <>
             <AppBar position="sticky" elevation={0} sx={{
@@ -80,30 +64,6 @@ const Navbar = () => {
                         </Box>
 
                         <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 2, alignItems: 'center' }}>
-                            {navItems.map((item) => (
-                                <Button
-                                    key={item.label}
-                                    component={RouterLink}
-                                    to={item.path}
-                                    onClick={() => item.hash && scrollToSection(item.hash)}
-                                    sx={{ color: 'text.primary', '&:hover': { color: 'primary.main', background: 'transparent' } }}
-                                >
-                                    {item.label}
-                                </Button>
-                            ))}
-
-                            {user?.role === 'citizen' && (
-                                <Button
-                                    variant="contained"
-                                    color="primary"
-                                    component={RouterLink}
-                                    to="/report"
-                                    sx={{ borderRadius: 2 }}
-                                >
-                                    Report Issue
-                                </Button>
-                            )}
-
                             <IconButton onClick={colorMode.toggleColorMode} color="inherit">
                                 {theme.palette.mode === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
                             </IconButton>
@@ -157,37 +117,6 @@ const Navbar = () => {
                         UIIS
                     </Typography>
                     <List sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                        {navItems.map((item) => (
-                            <ListItem key={item.label} disablePadding>
-                                <Button
-                                    fullWidth
-                                    component={RouterLink}
-                                    to={item.path}
-                                    onClick={() => {
-                                        handleDrawerToggle();
-                                        item.hash && scrollToSection(item.hash);
-                                    }}
-                                    sx={{ color: 'text.primary', justifyContent: 'center' }}
-                                >
-                                    {item.label}
-                                </Button>
-                            </ListItem>
-                        ))}
-
-                        {user?.role === 'citizen' && (
-                            <ListItem disablePadding>
-                                <Button
-                                    fullWidth
-                                    variant="contained"
-                                    component={RouterLink}
-                                    to="/report"
-                                    onClick={handleDrawerToggle}
-                                    sx={{ borderRadius: 2 }}
-                                >
-                                    Report Issue
-                                </Button>
-                            </ListItem>
-                        )}
 
                         <ListItem disablePadding sx={{ justifyContent: 'center', mt: 2 }}>
                             <IconButton onClick={colorMode.toggleColorMode} color="inherit">
@@ -196,20 +125,29 @@ const Navbar = () => {
                         </ListItem>
 
                         {user ? (
-                            <ListItem disablePadding sx={{ mt: 2 }}>
-                                <Button
-                                    fullWidth
-                                    variant="outlined"
-                                    color="error"
-                                    onClick={() => {
-                                        handleLogout();
-                                        handleDrawerToggle();
-                                    }}
-                                    startIcon={<LogOut size={18} />}
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, ml: 1 }}>
+                                {/* UPDATED: Wrap Avatar in Link */}
+                                <Box
+                                    component={RouterLink}
+                                    to="/profile"
+                                    sx={{ textDecoration: 'none', cursor: 'pointer' }}
                                 >
-                                    Logout
-                                </Button>
-                            </ListItem>
+                                    <Avatar sx={{
+                                        width: 32,
+                                        height: 32,
+                                        bgcolor: 'primary.main',
+                                        fontSize: '1rem',
+                                        transition: 'transform 0.2s',
+                                        '&:hover': { transform: 'scale(1.1)' }
+                                    }}>
+                                        {user.username[0].toUpperCase()}
+                                    </Avatar>
+                                </Box>
+
+                                <IconButton onClick={handleLogout} color="error" title="Logout">
+                                    <LogOut size={20} />
+                                </IconButton>
+                            </Box>
                         ) : (
                             <>
                                 <ListItem disablePadding sx={{ mt: 2 }}>

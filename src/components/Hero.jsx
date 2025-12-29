@@ -2,10 +2,12 @@ import React from 'react';
 import { Box, Typography, Button, Container, Grid, useTheme, useMediaQuery } from '@mui/material';
 import { motion } from 'framer-motion';
 import { Shield, BarChart3, Users } from 'lucide-react';
+import { useNavigate } from 'react-router-dom'; // 1. Import useNavigate
 
 const Hero = () => {
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+    const navigate = useNavigate(); // 2. Initialize the hook
 
     return (
         <Box sx={{
@@ -75,19 +77,21 @@ const Hero = () => {
                                 UIIS tracks urban water crises through community-driven data.
                                 Report shortages, contamination, and infrastructure leaks to influence digital water management.
                             </Typography>
+
+                            {/* UPDATED BUTTONS SECTION */}
                             <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                                 <Button
                                     variant="contained"
                                     size="large"
                                     sx={{ px: 4, py: 1.5 }}
-                                    onClick={() => document.getElementById('report-issue').scrollIntoView({ behavior: 'smooth' })}
+                                    onClick={() => navigate('/login')} // Redirects to login
                                 >
                                     Start Reporting
                                 </Button>
                                 <Button
                                     variant="outlined"
                                     size="large"
-                                    onClick={() => document.getElementById('dashboard').scrollIntoView({ behavior: 'smooth' })}
+                                    onClick={() => navigate('/login')} // Redirects to login
                                     sx={{
                                         px: 4,
                                         py: 1.5,
@@ -102,6 +106,7 @@ const Hero = () => {
                                     View Live Map
                                 </Button>
                             </Box>
+
                         </motion.div>
                     </Grid>
 

@@ -9,10 +9,8 @@ const Register = () => {
         username: '',
         email: '',
         password: '',
-        role: 'citizen',
-        aadharNo: ''
+        role: 'citizen'
     });
-    const [aadharPhoto, setAadharPhoto] = useState(null);
     const [otp, setOtp] = useState('');
     const [otpSent, setOtpSent] = useState(false);
     const [otpVerified, setOtpVerified] = useState(false);
@@ -53,18 +51,9 @@ const Register = () => {
         }
     };
 
-    const handleFileChange = (e) => {
-        setAadharPhoto(e.target.files[0]);
-    };
-
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
-
-        if (!aadharPhoto) {
-            setError('Please upload Aadhar card photo');
-            return;
-        }
 
         if (!otpVerified) {
             setError('Please verify your email with OTP first');
@@ -72,15 +61,13 @@ const Register = () => {
         }
 
         try {
-            const data = new FormData();
-            data.append('username', formData.username);
-            data.append('email', formData.email);
-            data.append('password', formData.password);
-            data.append('role', formData.role);
-            data.append('aadharNo', formData.aadharNo);
-            data.append('aadharPhoto', aadharPhoto);
+            const user = await register({
+                username: formData.username,
+                email: formData.email,
+                password: formData.password,
+                role: formData.role
+            });
 
-            const user = await register(data);
             if (user.role === 'officer') {
                 navigate('/dashboard');
             } else {
@@ -167,57 +154,7 @@ const Register = () => {
                             value={formData.password}
                             onChange={handleChange}
                         />
-                        <TextField
-                            margin="normal"
-                            required
-                            fullWidth
-                            label="Aadhar Number"
-                            name="aadharNo"
-                            value={formData.aadharNo}
-                            onChange={handleChange}
-                            inputProps={{ maxLength: 12 }}
-                        />
 
-                        <Box sx={{ mt: 2, mb: 1 }}>
-                            <Typography variant="body2" sx={{ mb: 1, color: 'text.secondary', fontWeight: 600 }}>
-                                Aadhar Card Photo *
-                            </Typography>
-                            <Button
-                                variant="outlined"
-                                component="label"
-                                fullWidth
-                                sx={{
-                                    py: 1.5,
-                                    borderStyle: 'dashed',
-                                    borderRadius: 2,
-                                    textTransform: 'none',
-                                    color: aadharPhoto ? 'success.main' : 'primary.main',
-                                    borderColor: aadharPhoto ? 'success.main' : 'primary.main',
-                                }}
-                            >
-                                {aadharPhoto ? `Selected: ${aadharPhoto.name}` : 'Upload Aadhar Photo'}
-                                <input
-                                    type="file"
-                                    hidden
-                                    accept="image/*"
-                                    onChange={handleFileChange}
-                                />
-                            </Button>
-                        </Box>
-
-                        <TextField
-                            select
-                            margin="normal"
-                            required
-                            fullWidth
-                            label="Role"
-                            name="role"
-                            value={formData.role}
-                            onChange={handleChange}
-                        >
-                            <MenuItem value="citizen">Citizen</MenuItem>
-                            <MenuItem value="officer">Officer</MenuItem>
-                        </TextField>
                         <Button
                             type="submit"
                             fullWidth

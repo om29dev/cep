@@ -12,6 +12,7 @@ import Login from './components/auth/Login';
 import Register from './components/auth/Register';
 import { Box, useTheme, CircularProgress } from '@mui/material';
 import { useAuth } from './AuthContext';
+import Profile from './components/Profile';
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
     const { user, loading } = useAuth();
@@ -61,17 +62,23 @@ const HomePage = () => {
 function App() {
     return (
         <Router>
-            <Box sx={{
-                bgcolor: 'background.default',
-                minHeight: '100vh',
-                transition: 'background-color 0.3s ease'
-            }}>
+            <Box sx={{ /* ... styles ... */ }}>
                 <Navbar />
 
                 <Routes>
                     <Route path="/" element={<HomePage />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/register" element={<Register />} />
+
+                    {/* 2. Add Profile Route */}
+                    <Route
+                        path="/profile"
+                        element={
+                            <ProtectedRoute>
+                                <Profile />
+                            </ProtectedRoute>
+                        }
+                    />
 
                     <Route
                         path="/report"
@@ -82,14 +89,7 @@ function App() {
                         }
                     />
 
-                    <Route
-                        path="/dashboard"
-                        element={
-                            <ProtectedRoute allowedRoles={['officer']}>
-                                <DashboardPreview />
-                            </ProtectedRoute>
-                        }
-                    />
+                    {/* ... other routes ... */}
 
                     <Route path="*" element={<Navigate to="/" />} />
                 </Routes>
@@ -101,4 +101,3 @@ function App() {
 }
 
 export default App;
-
