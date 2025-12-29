@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Box, TextField, Button, Typography, Container, Paper, Link, Alert, MenuItem } from '@mui/material';
+import { Box, TextField, Button, Typography, Container, Paper, Link, Alert, MenuItem, InputAdornment } from '@mui/material';
 import { useAuth } from '../../AuthContext';
+import axios from 'axios';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 
 const Register = () => {
@@ -12,12 +13,44 @@ const Register = () => {
         aadharNo: ''
     });
     const [aadharPhoto, setAadharPhoto] = useState(null);
+    const [otp, setOtp] = useState('');
+    const [otpSent, setOtpSent] = useState(false);
+    const [otpVerified, setOtpVerified] = useState(false);
+    const [otpError, setOtpError] = useState('');
     const [error, setError] = useState('');
     const { register } = useAuth();
     const navigate = useNavigate();
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
+    };
+
+    const handleSendOTP = async () => {
+        if (!formData.email) {
+            setOtpError('Please enter an email address first');
+            return;
+        }
+        try {
+            setOtpError('');
+            await axios.post('http://localhost:5000/api/auth/send-otp', { email: formData.email });
+            setOtpSent(true);
+            setOtpError('');
+            alert('OTP sent to your email!');
+        } catch (err) {
+            setOtpError(err.response?.data?.error || 'Failed to send OTP');
+        }
+    };
+
+    const handleVerifyOTP = async () => {
+        try {
+            setOtpError('');
+            await axios.post('http://localhost:5000/api/auth/verify-otp', { email: formData.email, otp });
+            setOtpVerified(true);
+            setOtpError('');
+            alert('OTP Verified Successfully!');
+        } catch (err) {
+            setOtpError(err.response?.data?.error || 'Invalid OTP');
+        }
     };
 
     const handleFileChange = (e) => {
@@ -30,6 +63,11 @@ const Register = () => {
 
         if (!aadharPhoto) {
             setError('Please upload Aadhar card photo');
+            return;
+        }
+
+        if (!otpVerified) {
+            setError('Please verify your email with OTP first');
             return;
         }
 
@@ -81,7 +119,44 @@ const Register = () => {
                             autoComplete="email"
                             value={formData.email}
                             onChange={handleChange}
+                            disabled={otpVerified}
+                            InputProps={{
+                                endAdornment: (
+                                    <InputAdornment position="end">
+                                        {!otpVerified && (
+                                            <Button
+                                                onClick={handleSendOTP}
+                                                disabled={otpSent || !formData.email}
+                                                size="small"
+                                            >
+                                                {otpSent ? 'Sent' : 'Send OTP'}
+                                            </Button>
+                                        )}
+                                        {otpVerified && <Typography variant="caption" color="success.main">Verified</Typography>}
+                                    </InputAdornment>
+                                ),
+                            }}
                         />
+                        {otpSent && !otpVerified && (
+                            <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+                                <TextField
+                                    margin="normal"
+                                    required
+                                    fullWidth
+                                    label="Enter OTP"
+                                    value={otp}
+                                    onChange={(e) => setOtp(e.target.value)}
+                                />
+                                <Button
+                                    variant="contained"
+                                    onClick={handleVerifyOTP}
+                                    sx={{ mt: 2, mb: 1 }}
+                                >
+                                    Verify
+                                </Button>
+                            </Box>
+                        )}
+                        {(otpError) && <Typography color="error" variant="caption">{otpError}</Typography>}
                         <TextField
                             margin="normal"
                             required

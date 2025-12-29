@@ -8,6 +8,7 @@ const os = require('os');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const cookieParser = require('cookie-parser');
+const nodemailer = require('nodemailer');
 require('dotenv').config();
 
 const app = express();
@@ -88,6 +89,13 @@ const initDb = async () => {
                 END IF;
             END $$;
 
+            CREATE TABLE IF NOT EXISTS otp_verifications (
+                id SERIAL PRIMARY KEY,
+                email TEXT NOT NULL,
+                otp TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
         `);
         console.log('Database initialized');
     } catch (err) {
@@ -117,6 +125,74 @@ const checkRole = (roles) => (req, res, next) => {
     }
     next();
 };
+
+// Email Transporter
+const transporter = nodemailer.createTransport({
+    service: 'gmail', // or configured via env variables for flexibility
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+    }
+});
+
+// Auth Routes
+app.post('/api/auth/send-otp', async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ error: 'Email is required' });
+
+        // Generate 6 digit OTP
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+        // Store in DB (Clean up old OTPhs for this email first)
+        await pool.query('DELETE FROM otp_verifications WHERE email = $1', [email]);
+        await pool.query('INSERT INTO otp_verifications (email, otp) VALUES ($1, $2)', [email, otp]);
+
+        // Send Email
+        const mailOptions = {
+            from: process.env.EMAIL_USER,
+            to: email,
+            subject: 'Your Registration OTP',
+            text: `Your OTP for registration is: ${otp}. It is valid for 10 minutes.`
+        };
+
+        transporter.sendMail(mailOptions, (error, info) => {
+            if (error) {
+                console.error('Email send error:', error);
+                // For development fallback if email fails (remove in production!)
+                // return res.status(200).json({ message: 'OTP Generated (Email Failed)', devOtp: otp });
+                return res.status(500).json({ error: 'Failed to send email' });
+            } else {
+                res.json({ message: 'OTP sent successfully' });
+            }
+        });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Error processing OTP request' });
+    }
+});
+
+app.post('/api/auth/verify-otp', async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+        const result = await pool.query(
+            'SELECT * FROM otp_verifications WHERE email = $1 AND otp = $2 AND created_at > NOW() - INTERVAL \'10 minutes\'',
+            [email, otp]
+        );
+
+        if (result.rows.length > 0) {
+            // OTP Valid
+            await pool.query('DELETE FROM otp_verifications WHERE email = $1', [email]); // Consume OTP
+            res.json({ message: 'OTP Verified' });
+        } else {
+            res.status(400).json({ error: 'Invalid or expired OTP' });
+        }
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Error verifying OTP' });
+    }
+});
 
 // Auth Routes
 app.post('/api/auth/register', upload.single('aadharPhoto'), async (req, res) => {
