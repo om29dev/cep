@@ -155,7 +155,9 @@ const DashboardPreview = () => {
     const handleResolve = async (id) => {
         try {
             await axios.patch(`/api/complaints/${id}/status`, { status: 'resolved' });
+            // Optimistic update: changes status in local state, which triggers useMemo
             setComplaints(prev => prev.map(c => c.id === id ? { ...c, status: 'resolved' } : c));
+
             if (selectedComplaint && selectedComplaint.id === id) {
                 setSelectedComplaint(prev => ({ ...prev, status: 'resolved' }));
             }
@@ -179,13 +181,10 @@ const DashboardPreview = () => {
         return null;
     };
 
-    // Helper to safely parse images
     const parseImages = (images) => {
         if (!images) return [];
         try {
-            // If it's already an array, return it
             if (Array.isArray(images)) return images;
-            // If it's a string, parse it
             if (typeof images === 'string') {
                 const parsed = JSON.parse(images);
                 return Array.isArray(parsed) ? parsed : [];
@@ -203,13 +202,15 @@ const DashboardPreview = () => {
         const processedIds = new Set();
         const RADIUS_KM = 1.0;
 
-        const validComplaints = complaints.filter(c => getPosition(c.location));
+        // UPDATED: Filter to only include NON-RESOLVED complaints with valid locations
+        const validComplaints = complaints.filter(c =>
+            c.status !== 'resolved' && getPosition(c.location)
+        );
 
         validComplaints.forEach((current) => {
             if (processedIds.has(current.id)) return;
 
             const currentPos = getPosition(current.location);
-            // Start a new cluster with this complaint
             const newCluster = {
                 id: `zone-${clusters.length + 1}`,
                 name: `Zone ${clusters.length + 1}`,
@@ -219,7 +220,6 @@ const DashboardPreview = () => {
             };
             processedIds.add(current.id);
 
-            // Find neighbors
             validComplaints.forEach((neighbor) => {
                 if (!processedIds.has(neighbor.id)) {
                     const neighborPos = getPosition(neighbor.location);
@@ -239,19 +239,16 @@ const DashboardPreview = () => {
             clusters.push(newCluster);
         });
 
-        // Return clusters sorted by count (highest first)
         return clusters.sort((a, b) => b.count - a.count);
-    }, [complaints]);
+    }, [complaints]); // Dependency on complaints ensures re-calc when status changes
 
-    // Derived stats
     const totalReports = complaints.length;
     const activeComplaints = complaints.filter(c => c.status !== 'resolved');
     const activeLeaks = complaints.filter(c => c.category === 'supply' && c.status !== 'resolved').length;
 
-    // Identify High Density Zones (more than 1 complaint)
     const hotspots = clusterData.filter(c => c.count > 1);
     const patternIntel = hotspots.length > 0
-        ? `Alert: ${hotspots.length} high-density zones detected. Zone 1 has ${hotspots[0]?.count} reports.`
+        ? `Alert: ${hotspots.length} high-density zones detected. Zone 1 has ${hotspots[0]?.count} active reports.`
         : "No dense clusters detected. Issues are geographically scattered.";
 
     return (
@@ -260,7 +257,6 @@ const DashboardPreview = () => {
             background: theme.palette.mode === 'dark' ? '#0f172a' : '#f8fafc'
         }}>
             <Container maxWidth="xl">
-                {/* Top Row: Map and Stats */}
                 <Box sx={{
                     display: 'flex',
                     flexDirection: { xs: 'column', md: 'row' },
@@ -268,7 +264,6 @@ const DashboardPreview = () => {
                     alignItems: 'stretch',
                     mb: 4
                 }}>
-                    {/* Left: Map */}
                     <Box sx={{ flex: { xs: '1 1 auto', md: 2 }, minWidth: 0 }}>
                         <Paper
                             elevation={3}
@@ -293,13 +288,11 @@ const DashboardPreview = () => {
                                 />
                                 <AutoRecenterMap complaints={activeComplaints} getPosition={getPosition} />
 
-                                {/* Draw Cluster Circles */}
                                 {clusterData.map((cluster) => (
                                     <React.Fragment key={cluster.id}>
-                                        {/* 1km Radius Visual */}
                                         <Circle
                                             center={cluster.center}
-                                            radius={1000} // 1000 meters = 1km
+                                            radius={1000}
                                             pathOptions={{
                                                 color: cluster.count > 1 ? '#FF4D4D' : '#3388ff',
                                                 fillColor: cluster.count > 1 ? '#FF4D4D' : '#3388ff',
@@ -341,7 +334,6 @@ const DashboardPreview = () => {
                         </Paper>
                     </Box>
 
-                    {/* Right: Stats */}
                     <Box sx={{ flex: { xs: '1 1 auto', md: 1 }, minWidth: 0 }}>
                         <Stack spacing={3} sx={{ height: '100%' }}>
                             <StatCard title="Total Reports" value={totalReports} icon={Users} color="#00D2FF" />
@@ -366,14 +358,13 @@ const DashboardPreview = () => {
                     </Box>
                 </Box>
 
-                {/* NEW SECTION: High Density Analysis Graph */}
                 <Grid container spacing={4}>
                     <Grid item xs={12} md={6}>
                         <Paper elevation={3} sx={{ p: 3, borderRadius: 4, height: 450, display: 'flex', flexDirection: 'column' }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                                 <BarChart3 size={24} color="#00D2FF" />
                                 <Typography variant="h6" fontWeight={800}>
-                                    Regional Complaint Density (1km Radius)
+                                    Active Regional Density (1km Radius)
                                 </Typography>
                             </Box>
 
@@ -393,7 +384,7 @@ const DashboardPreview = () => {
                                                 contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                                                 cursor={{ fill: 'transparent' }}
                                             />
-                                            <Bar dataKey="count" name="Complaints" radius={[0, 4, 4, 0]} barSize={30}>
+                                            <Bar dataKey="count" name="Active Complaints" radius={[0, 4, 4, 0]} barSize={30}>
                                                 {clusterData.map((entry, index) => (
                                                     <Cell key={`cell-${index}`} fill={index === 0 ? '#FF4D4D' : '#00D2FF'} />
                                                 ))}
@@ -402,14 +393,13 @@ const DashboardPreview = () => {
                                     </ResponsiveContainer>
                                 ) : (
                                     <Box display="flex" justifyContent="center" alignItems="center" height="100%">
-                                        <Typography color="text.secondary">No density data available yet</Typography>
+                                        <Typography color="text.secondary">No active high-density zones</Typography>
                                     </Box>
                                 )}
                             </Box>
                         </Paper>
                     </Grid>
 
-                    {/* Table Section */}
                     <Grid item xs={12} md={6}>
                         <Paper elevation={3} sx={{ p: 3, borderRadius: 4, height: 450, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                             <Typography variant="h6" fontWeight={800} mb={2}>Recent Log</Typography>
@@ -441,7 +431,6 @@ const DashboardPreview = () => {
                     </Grid>
                 </Grid>
 
-                {/* Complaint Detail Dialog with Fixed Evidence UI */}
                 <Dialog
                     open={!!selectedComplaint}
                     onClose={() => setSelectedComplaint(null)}
@@ -467,7 +456,6 @@ const DashboardPreview = () => {
                                     <strong>Location:</strong> {selectedComplaint.location}
                                 </Typography>
 
-                                {/* Fixed Evidence Section */}
                                 {parseImages(selectedComplaint.images).length > 0 && (
                                     <Box mt={3}>
                                         <Typography variant="subtitle2" color="text.secondary" fontWeight={700} gutterBottom>
@@ -475,7 +463,6 @@ const DashboardPreview = () => {
                                         </Typography>
                                         <ImageList cols={3} rowHeight={100} gap={8}>
                                             {parseImages(selectedComplaint.images).map((img, index) => {
-                                                // Ensure we handle plain filenames or full paths correctly
                                                 const filename = img.split(/[/\\]/).pop();
                                                 const imageUrl = `http://localhost:5000/uploads/${filename}`;
                                                 return (

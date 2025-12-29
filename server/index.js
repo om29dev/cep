@@ -118,7 +118,11 @@ const verifyToken = (req, res, next) => {
 };
 
 const checkRole = (roles) => (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
+    // Case-insensitive role check
+    const userRole = req.user.role.toLowerCase();
+    const allowedRoles = roles.map(r => r.toLowerCase());
+
+    if (!allowedRoles.includes(userRole)) {
         return res.status(403).json({ error: 'Permission denied' });
     }
     next();
@@ -285,7 +289,9 @@ app.post('/api/complaints', verifyToken, checkRole(['citizen']), upload.array('i
 app.get('/api/complaints', verifyToken, async (req, res) => {
     try {
         let result;
-        if (req.user.role === 'officer') {
+        const role = req.user.role.toLowerCase();
+
+        if (role === 'officer' || role === 'admin') {
             result = await pool.query('SELECT c.*, u.username as citizen_name FROM complaints c LEFT JOIN users u ON c.user_id = u.id ORDER BY created_at DESC');
         } else {
             result = await pool.query('SELECT * FROM complaints WHERE user_id = $1 ORDER BY created_at DESC', [req.user.id]);
@@ -297,7 +303,7 @@ app.get('/api/complaints', verifyToken, async (req, res) => {
     }
 });
 
-app.patch('/api/complaints/:id/status', verifyToken, checkRole(['officer']), async (req, res) => {
+app.patch('/api/complaints/:id/status', verifyToken, checkRole(['officer', 'admin']), async (req, res) => {
     try {
         const { id } = req.params;
         const { status } = req.body;
@@ -315,24 +321,27 @@ app.patch('/api/complaints/:id/status', verifyToken, checkRole(['officer']), asy
 
 // --- ADMIN ROUTES ---
 
-// Get all users (for Admin Dashboard)
-app.get('/api/admin/users', verifyToken, checkRole(['Admin']), async (req, res) => {
+// 1. Get all users
+app.get('/api/admin/users', verifyToken, checkRole(['admin']), async (req, res) => {
     try {
-        // Fetch all users except the current admin to prevent self-deletion issues if needed
         const result = await pool.query('SELECT id, username, email, role, created_at FROM users ORDER BY id ASC');
         res.json(result.rows);
     } catch (err) {
         console.error(err);
-        res.status(500).json({ error: 'Error fetching users' });
+        res.status(500).json({ error: 'Failed to fetch users' });
     }
 });
 
-// Create Officer (Admin only)
-app.post('/api/admin/create-officer', verifyToken, checkRole(['Admin']), async (req, res) => {
+// 2. Appoint Officer
+app.post('/api/admin/officers', verifyToken, checkRole(['admin']), async (req, res) => {
     try {
         const { username, email, password } = req.body;
 
-        // Hash password
+        const userCheck = await pool.query('SELECT * FROM users WHERE email = $1 OR username = $2', [email, username]);
+        if (userCheck.rows.length > 0) {
+            return res.status(400).json({ error: 'Username or Email already exists' });
+        }
+
         const hashedPassword = await bcrypt.hash(password, 10);
         const role = 'officer';
 
@@ -344,40 +353,37 @@ app.post('/api/admin/create-officer', verifyToken, checkRole(['Admin']), async (
         res.status(201).json(result.rows[0]);
     } catch (err) {
         console.error(err);
-        // Handle unique constraint violations (e.g., duplicate email)
-        if (err.code === '23505') {
-            return res.status(400).json({ error: 'Username or Email already exists' });
-        }
         res.status(500).json({ error: 'Failed to create officer' });
     }
 });
 
-// Delete User (Admin only)
-app.delete('/api/admin/users/:id', verifyToken, checkRole(['Admin']), async (req, res) => {
+// 3. Delete User (Protected: Cannot delete Admins)
+app.delete('/api/admin/users/:id', verifyToken, checkRole(['admin']), async (req, res) => {
     try {
         const { id } = req.params;
 
-        // Optional: Prevent deleting yourself
-        if (parseInt(id) === req.user.id) {
-            return res.status(400).json({ error: 'Cannot delete your own admin account' });
-        }
+        // Fetch user to check role before deleting
+        const userCheck = await pool.query('SELECT role FROM users WHERE id = $1', [id]);
 
-        // Delete associated data first (foreign key constraints)
-        // Note: You might need to delete from 'complaints' or 'otp_verifications' first if cascading isn't set up in SQL.
-        // Assuming CASCADE or manual cleanup:
-        await pool.query('DELETE FROM complaints WHERE user_id = $1', [id]);
-        await pool.query('DELETE FROM otp_verifications WHERE email = (SELECT email FROM users WHERE id = $1)', [id]);
-
-        const result = await pool.query('DELETE FROM users WHERE id = $1 RETURNING *', [id]);
-
-        if (result.rows.length === 0) {
+        if (userCheck.rows.length === 0) {
             return res.status(404).json({ error: 'User not found' });
         }
+
+        const targetUserRole = userCheck.rows[0].role.toLowerCase();
+
+        // Security Check: Admins cannot be deleted
+        if (targetUserRole === 'admin') {
+            return res.status(403).json({ error: 'Access Denied: Cannot delete Administrator accounts.' });
+        }
+
+        // Proceed to delete
+        await pool.query('DELETE FROM complaints WHERE user_id = $1', [id]);
+        await pool.query('DELETE FROM users WHERE id = $1', [id]);
 
         res.json({ message: 'User deleted successfully' });
     } catch (err) {
         console.error(err);
-        res.status(500).json({ error: 'Error deleting user' });
+        res.status(500).json({ error: 'Failed to delete user' });
     }
 });
 

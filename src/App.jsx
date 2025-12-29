@@ -5,14 +5,14 @@ import Hero from './components/Hero';
 import ProblemSection from './components/ProblemSection';
 import HowItWorks from './components/HowItWorks';
 import BlockchainFeature from './components/BlockchainFeature';
-// Import both dashboard components
 import DashboardPreview from './components/DashboardPreview';
 import UserComplaints from './components/UserComplaints';
+import AdminDashboard from './components/AdminDashboard';
 import ComplaintForm from './components/ComplaintForm';
 import Footer from './components/Footer';
 import Login from './components/auth/Login';
 import Register from './components/auth/Register';
-import { Box, useTheme, CircularProgress } from '@mui/material';
+import { Box, CircularProgress } from '@mui/material';
 import { useAuth } from './AuthContext';
 import Profile from './components/Profile';
 
@@ -31,88 +31,47 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
         return <Navigate to="/login" />;
     }
 
-    if (allowedRoles && !allowedRoles.includes(user.role)) {
-        return <Navigate to="/" />; // Or unauthorized page
+    // Fix: Normalize role to lowercase before checking permissions
+    if (allowedRoles && !allowedRoles.includes(user.role.toLowerCase())) {
+        return <Navigate to="/" />;
     }
 
     return children;
 };
 
-const HomePage = () => {
-    const theme = useTheme();
-    const isDarkMode = theme.palette.mode === 'dark';
-
-    return (
-        <>
-            <Box id="home">
-                <Hero />
-            </Box>
-
-            <Box id="about" sx={{
-                py: 12,
-                background: isDarkMode ? '#0d1b33' : '#f0f3f7',
-                borderTop: `1px solid ${theme.palette.divider}`
-            }}>
-                <ProblemSection />
-                <HowItWorks />
-                <BlockchainFeature />
-            </Box>
-        </>
-    );
-};
+const HomePage = () => (/* ... existing HomePage code ... */
+    <>
+        <Box id="home"><Hero /></Box>
+        <Box id="about" sx={{ py: 12 }}><ProblemSection /><HowItWorks /><BlockchainFeature /></Box>
+    </>
+);
 
 function App() {
     return (
         <Router>
             <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
                 <Navbar />
-
                 <Routes>
                     <Route path="/" element={<HomePage />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/register" element={<Register />} />
+                    <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
 
                     <Route
-                        path="/profile"
+                        path="/admin"
                         element={
-                            <ProtectedRoute>
-                                <Profile />
+                            <ProtectedRoute allowedRoles={['admin']}>
+                                <AdminDashboard />
                             </ProtectedRoute>
                         }
                     />
 
-                    {/* OFFICER ROUTE: Advanced Dashboard (Map + Graphs) */}
-                    <Route
-                        path="/dashboard"
-                        element={
-                            <ProtectedRoute allowedRoles={['officer']}>
-                                <DashboardPreview />
-                            </ProtectedRoute>
-                        }
-                    />
-
-                    {/* CITIZEN ROUTE: Simple List of Issues */}
-                    <Route
-                        path="/my-complaints"
-                        element={
-                            <ProtectedRoute allowedRoles={['citizen']}>
-                                <UserComplaints />
-                            </ProtectedRoute>
-                        }
-                    />
-
-                    <Route
-                        path="/report"
-                        element={
-                            <ProtectedRoute allowedRoles={['citizen']}>
-                                <ComplaintForm />
-                            </ProtectedRoute>
-                        }
-                    />
+                    <Route path="/dashboard" element={<ProtectedRoute allowedRoles={['officer']}><DashboardPreview /></ProtectedRoute>} />
+                    <Route path="/my-complaints" element={<ProtectedRoute allowedRoles={['citizen']}><UserComplaints /></ProtectedRoute>} />
+                    <Route path="/report" element={<ProtectedRoute allowedRoles={['citizen']}><ComplaintForm /></ProtectedRoute>} />
 
                     <Route path="*" element={<Navigate to="/" />} />
                 </Routes>
-
                 <Footer />
             </Box>
         </Router>

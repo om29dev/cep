@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, TextField, Button, Typography, Container, Paper, Link, Alert, MenuItem } from '@mui/material';
+import { Box, TextField, Button, Typography, Container, Paper, Link, Alert } from '@mui/material';
 import { useAuth } from '../../AuthContext';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 
@@ -16,15 +16,18 @@ const Login = () => {
         try {
             const user = await login(email, password);
 
-            // FIX: Add specific checks for roles
-            if (user.role === 'officer') {
+            // Fix: Normalize role to lowercase for comparison
+            const role = user.role.toLowerCase();
+
+            if (role === 'officer') {
                 navigate('/dashboard');
-            } else if (user.role === 'Admin') {
+            } else if (role === 'admin') {
                 navigate('/admin');
             } else {
-                navigate('/report');
+                navigate('/my-complaints');
             }
         } catch (err) {
+            console.error(err);
             setError(err.response?.data?.error || 'Login failed');
         }
     };
