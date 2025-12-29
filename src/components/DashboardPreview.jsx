@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import {
     Box,
@@ -7,26 +7,33 @@ import {
     Paper,
     useTheme,
     Button,
-    Card,
-    CardContent,
     Stack,
-    CircularProgress,
     Grid,
     Dialog,
     DialogTitle,
     DialogContent,
     DialogActions,
     Chip,
-    Divider
+    Divider,
+    ImageList,
+    ImageListItem
 } from '@mui/material';
 import { DataGrid, GridToolbar } from '@mui/x-data-grid';
+import {
+    BarChart,
+    Bar,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip as RechartsTooltip,
+    ResponsiveContainer,
+    Cell
+} from 'recharts';
 import {
     Users,
     TrendingUp,
     Droplets,
-    MapPin,
-    AlertCircle,
-    CheckCircle
+    BarChart3
 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -46,16 +53,31 @@ let DefaultIcon = L.icon({
 
 L.Marker.prototype.options.icon = DefaultIcon;
 
-// Initial India Center
 const INDIA_CENTER = [20.5937, 78.9629];
 
-// Component to recenter map automatically when complaints change
+// --- Utility: Haversine Formula for Distance (km) ---
+const getDistanceFromLatLonInKm = (lat1, lon1, lat2, lon2) => {
+    const R = 6371; // Radius of the earth in km
+    const dLat = deg2rad(lat2 - lat1);
+    const dLon = deg2rad(lon2 - lon1);
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; // Distance in km
+};
+
+const deg2rad = (deg) => {
+    return deg * (Math.PI / 180);
+};
+
+// Component to recenter map automatically
 const AutoRecenterMap = ({ complaints, getPosition }) => {
     const map = useMap();
 
     useEffect(() => {
         if (complaints && complaints.length > 0) {
-            // Calculate centroid or bounds
             const positions = complaints
                 .map(c => getPosition(c.location))
                 .filter(p => p !== null);
@@ -65,7 +87,7 @@ const AutoRecenterMap = ({ complaints, getPosition }) => {
                 map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
             }
         }
-    }, [complaints, map]);
+    }, [complaints, map, getPosition]);
 
     return null;
 };
@@ -124,7 +146,6 @@ const DashboardPreview = () => {
             setComplaints(response.data);
         } catch (err) {
             console.error("Failed to fetch complaints:", err);
-            // No fallback data - rely on empty state or real DB data
             setComplaints([]);
         } finally {
             setLoading(false);
@@ -134,18 +155,14 @@ const DashboardPreview = () => {
     const handleResolve = async (id) => {
         try {
             await axios.patch(`/api/complaints/${id}/status`, { status: 'resolved' });
-            // Optimistic update
             setComplaints(prev => prev.map(c => c.id === id ? { ...c, status: 'resolved' } : c));
-
-            // Also update selected complaint if it exists
             if (selectedComplaint && selectedComplaint.id === id) {
                 setSelectedComplaint(prev => ({ ...prev, status: 'resolved' }));
             }
-
             alert("Complaint marked as resolved.");
         } catch (err) {
             console.error("Error resolving complaint:", err);
-            alert("Failed to update status. Are you likely not logged in or authorized?");
+            alert("Failed to update status.");
         }
     };
 
@@ -153,7 +170,6 @@ const DashboardPreview = () => {
         fetchComplaints();
     }, []);
 
-    // Helper to parse location
     const getPosition = (locString) => {
         if (!locString) return null;
         try {
@@ -163,24 +179,80 @@ const DashboardPreview = () => {
         return null;
     };
 
-    // Derived stats
-    const totalReports = complaints.length;
-
-    const activeComplaints = complaints.filter(c => c.status !== 'resolved');
-
-    // Very basic clustering logic: just active count for now since real spatial clustering is complex without libraries
-    const activeClusters = activeComplaints.length > 0 ? "Active Zone" : "No Activity";
-
-    const activeLeaks = complaints.filter(c => c.category === 'supply' && c.status !== 'resolved').length;
-
-    // Determine Pattern Intelligence based on real data
-    const getPatternIntel = () => {
-        if (activeComplaints.length === 0) return "No active anomalies detected. System operating normally.";
-        if (activeLeaks > 2) return `Critical Alert: ${activeLeaks} active leaks detected in close proximity. Potential pipeline failure.`;
-        return "Routine monitoring active. No major anomalies.";
+    // Helper to safely parse images
+    const parseImages = (images) => {
+        if (!images) return [];
+        try {
+            // If it's already an array, return it
+            if (Array.isArray(images)) return images;
+            // If it's a string, parse it
+            if (typeof images === 'string') {
+                const parsed = JSON.parse(images);
+                return Array.isArray(parsed) ? parsed : [];
+            }
+            return [];
+        } catch (e) {
+            console.error("Image parse error", e);
+            return [];
+        }
     };
 
-    const patternIntel = getPatternIntel();
+    // --- CLUSTERING LOGIC ---
+    const clusterData = useMemo(() => {
+        const clusters = [];
+        const processedIds = new Set();
+        const RADIUS_KM = 1.0;
+
+        const validComplaints = complaints.filter(c => getPosition(c.location));
+
+        validComplaints.forEach((current) => {
+            if (processedIds.has(current.id)) return;
+
+            const currentPos = getPosition(current.location);
+            // Start a new cluster with this complaint
+            const newCluster = {
+                id: `zone-${clusters.length + 1}`,
+                name: `Zone ${clusters.length + 1}`,
+                center: currentPos,
+                count: 1,
+                complaints: [current]
+            };
+            processedIds.add(current.id);
+
+            // Find neighbors
+            validComplaints.forEach((neighbor) => {
+                if (!processedIds.has(neighbor.id)) {
+                    const neighborPos = getPosition(neighbor.location);
+                    const distance = getDistanceFromLatLonInKm(
+                        currentPos[0], currentPos[1],
+                        neighborPos[0], neighborPos[1]
+                    );
+
+                    if (distance <= RADIUS_KM) {
+                        newCluster.count += 1;
+                        newCluster.complaints.push(neighbor);
+                        processedIds.add(neighbor.id);
+                    }
+                }
+            });
+
+            clusters.push(newCluster);
+        });
+
+        // Return clusters sorted by count (highest first)
+        return clusters.sort((a, b) => b.count - a.count);
+    }, [complaints]);
+
+    // Derived stats
+    const totalReports = complaints.length;
+    const activeComplaints = complaints.filter(c => c.status !== 'resolved');
+    const activeLeaks = complaints.filter(c => c.category === 'supply' && c.status !== 'resolved').length;
+
+    // Identify High Density Zones (more than 1 complaint)
+    const hotspots = clusterData.filter(c => c.count > 1);
+    const patternIntel = hotspots.length > 0
+        ? `Alert: ${hotspots.length} high-density zones detected. Zone 1 has ${hotspots[0]?.count} reports.`
+        : "No dense clusters detected. Issues are geographically scattered.";
 
     return (
         <Box sx={{
@@ -188,15 +260,15 @@ const DashboardPreview = () => {
             background: theme.palette.mode === 'dark' ? '#0f172a' : '#f8fafc'
         }}>
             <Container maxWidth="xl">
-                {/* Flex Container instead of Grid for stability */}
+                {/* Top Row: Map and Stats */}
                 <Box sx={{
                     display: 'flex',
                     flexDirection: { xs: 'column', md: 'row' },
                     gap: 4,
-                    alignItems: 'stretch'
+                    alignItems: 'stretch',
+                    mb: 4
                 }}>
-
-                    {/* Left Section: Map (Flex 2 = 66%) */}
+                    {/* Left: Map */}
                     <Box sx={{ flex: { xs: '1 1 auto', md: 2 }, minWidth: 0 }}>
                         <Paper
                             elevation={3}
@@ -221,108 +293,67 @@ const DashboardPreview = () => {
                                 />
                                 <AutoRecenterMap complaints={activeComplaints} getPosition={getPosition} />
 
+                                {/* Draw Cluster Circles */}
+                                {clusterData.map((cluster) => (
+                                    <React.Fragment key={cluster.id}>
+                                        {/* 1km Radius Visual */}
+                                        <Circle
+                                            center={cluster.center}
+                                            radius={1000} // 1000 meters = 1km
+                                            pathOptions={{
+                                                color: cluster.count > 1 ? '#FF4D4D' : '#3388ff',
+                                                fillColor: cluster.count > 1 ? '#FF4D4D' : '#3388ff',
+                                                fillOpacity: 0.1,
+                                                weight: 1,
+                                                dashArray: '5, 10'
+                                            }}
+                                        />
+                                    </React.Fragment>
+                                ))}
+
                                 {activeComplaints.map((complaint) => {
                                     const pos = getPosition(complaint.location);
                                     if (!pos) return null;
                                     return (
-                                        <React.Fragment key={complaint.id}>
-                                            <Circle
-                                                center={pos}
-                                                radius={800}
-                                                pathOptions={{
-                                                    color: 'transparent',
-                                                    fillColor: '#FF4D4D',
-                                                    fillOpacity: 0.3
-                                                }}
-                                            />
-                                            <Circle
-                                                center={pos}
-                                                radius={300}
-                                                pathOptions={{
-                                                    color: 'transparent',
-                                                    fillColor: '#FF4D4D',
-                                                    fillOpacity: 0.6
-                                                }}
-                                            />
-                                            <Marker position={pos}>
-                                                <Popup>
-                                                    <Typography variant="subtitle2" fontWeight={700}>
-                                                        {complaint.category?.toUpperCase() || 'ISSUE'}
-                                                    </Typography>
-                                                    <Typography variant="body2" sx={{ my: 1 }}>
-                                                        {complaint.description}
-                                                    </Typography>
-                                                    <Button
-                                                        variant="contained"
-                                                        size="small"
-                                                        color="success"
-                                                        fullWidth
-                                                        onClick={() => handleResolve(complaint.id)}
-                                                    >
-                                                        Mark Resolved
-                                                    </Button>
-                                                </Popup>
-                                            </Marker>
-                                        </React.Fragment>
+                                        <Marker key={complaint.id} position={pos}>
+                                            <Popup>
+                                                <Typography variant="subtitle2" fontWeight={700}>
+                                                    {complaint.category?.toUpperCase()}
+                                                </Typography>
+                                                <Typography variant="caption">
+                                                    {complaint.location}
+                                                </Typography>
+                                                <Button
+                                                    variant="contained"
+                                                    size="small"
+                                                    color="success"
+                                                    fullWidth
+                                                    onClick={() => handleResolve(complaint.id)}
+                                                    sx={{ mt: 1 }}
+                                                >
+                                                    Resolve
+                                                </Button>
+                                            </Popup>
+                                        </Marker>
                                     );
                                 })}
                             </MapContainer>
-
-                            {/* Floating Pill - Dynamic Text */}
-                            <Paper sx={{
-                                position: 'absolute',
-                                bottom: 30,
-                                left: 30,
-                                zIndex: 1000,
-                                py: 1.5,
-                                px: 3,
-                                borderRadius: 10,
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 2,
-                                boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
-                            }}>
-                                <AlertCircle size={20} color={activeComplaints.length > 0 ? "#FF4D4D" : "#4CAF50"} />
-                                <Typography variant="subtitle2" fontWeight={700} color="text.secondary">
-                                    Status: <span style={{ color: '#000' }}>{activeClusters}</span> | Reports: <span style={{ color: '#000' }}>{activeComplaints.length}</span>
-                                </Typography>
-                            </Paper>
                         </Paper>
                     </Box>
 
-                    {/* Right Section: Stats (Flex 1 = 33%) */}
+                    {/* Right: Stats */}
                     <Box sx={{ flex: { xs: '1 1 auto', md: 1 }, minWidth: 0 }}>
                         <Stack spacing={3} sx={{ height: '100%' }}>
-                            <StatCard
-                                title="Total Reports"
-                                value={totalReports.toLocaleString()}
-                                icon={Users}
-                                color="#00D2FF"
-                            />
+                            <StatCard title="Total Reports" value={totalReports} icon={Users} color="#00D2FF" />
+                            <StatCard title="Active Issues" value={activeComplaints.length} icon={TrendingUp} color="#4CAF50" />
+                            <StatCard title="Critical Leaks" value={activeLeaks} icon={Droplets} color="#FF4D4D" />
 
-                            <StatCard
-                                title="Active Issues"
-                                value={activeComplaints.length}
-                                icon={TrendingUp}
-                                color="#4CAF50"
-                            />
-
-                            <StatCard
-                                title="Critical Leaks"
-                                value={activeLeaks}
-                                icon={Droplets}
-                                color="#FF4D4D"
-                            />
-
-                            {/* Pattern Intelligence Card - Dynamic */}
                             <Paper sx={{
                                 mt: 'auto !important',
                                 p: 4,
                                 borderRadius: 5,
                                 background: 'linear-gradient(135deg, #E0C3FC 0%, #8EC5FC 100%)',
-                                color: '#4a148c',
-                                position: 'relative',
-                                overflow: 'hidden'
+                                color: '#4a148c'
                             }}>
                                 <Typography variant="h6" fontWeight={800} gutterBottom sx={{ color: '#5e35b1' }}>
                                     Live Intelligence
@@ -335,256 +366,155 @@ const DashboardPreview = () => {
                     </Box>
                 </Box>
 
-                {/* Complaints Table Section */}
-                <Box sx={{ mt: 6 }}>
-                    <Paper
-                        elevation={3}
-                        sx={{
-                            p: 3,
-                            borderRadius: 4,
-                            background: theme.palette.mode === 'dark' ? '#1e293b' : '#fff',
-                            width: '100%',
-                            overflow: 'hidden'
-                        }}
-                    >
-                        <Stack direction="row" alignItems="center" justifyContent="space-between" mb={3}>
-                            <Typography variant="h6" fontWeight={800} color="text.primary">
-                                Recent Complaints Log
-                            </Typography>
-                            <Box sx={{ display: 'flex', gap: 1 }}>
-                                <Typography variant="caption" sx={{
-                                    bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
-                                    px: 2, py: 0.5, borderRadius: 10, fontWeight: 600
-                                }}>
-                                    Total: {complaints.length}
+                {/* NEW SECTION: High Density Analysis Graph */}
+                <Grid container spacing={4}>
+                    <Grid item xs={12} md={6}>
+                        <Paper elevation={3} sx={{ p: 3, borderRadius: 4, height: 450, display: 'flex', flexDirection: 'column' }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                                <BarChart3 size={24} color="#00D2FF" />
+                                <Typography variant="h6" fontWeight={800}>
+                                    Regional Complaint Density (1km Radius)
                                 </Typography>
                             </Box>
-                        </Stack>
 
-                        <Box sx={{ height: 500, width: '100%' }}>
-                            <DataGrid
-                                rows={complaints}
-                                onRowClick={(params) => setSelectedComplaint(params.row)}
-                                columns={[
-                                    { field: 'id', headerName: 'ID', width: 90 },
-                                    {
-                                        field: 'category',
-                                        headerName: 'Category',
-                                        width: 150,
-                                        renderCell: (params) => (
-                                            <Typography variant="body2" fontWeight={600} sx={{ textTransform: 'capitalize' }}>
-                                                {params.value}
-                                            </Typography>
-                                        )
-                                    },
-                                    { field: 'location', headerName: 'Location Coordinates', width: 200 },
-                                    { field: 'description', headerName: 'Description', width: 300, flex: 1 },
-                                    {
-                                        field: 'status',
-                                        headerName: 'Status',
-                                        width: 150,
-                                        renderCell: (params) => {
-                                            const status = params.value;
-                                            const color = status === 'resolved' ? '#4CAF50' : status === 'pending' ? '#FFC107' : '#FF4D4D';
-                                            return (
-                                                <Box sx={{
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: 1,
-                                                    color: color,
-                                                    fontWeight: 700
-                                                }}>
-                                                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: color }} />
-                                                    {status?.toUpperCase()}
-                                                </Box>
-                                            )
-                                        }
-                                    },
-                                    {
-                                        field: 'created_at',
-                                        headerName: 'Date Reported',
-                                        width: 200,
-                                        valueGetter: (params) => new Date(params).toLocaleString()
-                                    },
-                                ]}
-                                pageSize={10}
-                                rowsPerPageOptions={[10, 25, 50]}
-                                disableSelectionOnClick={false}
-                                slots={{ toolbar: GridToolbar }}
-                                slotProps={{
-                                    toolbar: {
-                                        showQuickFilter: true,
-                                    },
-                                }}
-                                sx={{
-                                    border: 'none',
-                                    '& .MuiDataGrid-cell': {
-                                        borderBottom: `1px solid ${theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}`,
-                                        cursor: 'pointer'
-                                    },
-                                    '& .MuiDataGrid-row:hover': {
-                                        bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'
-                                    },
-                                    '& .MuiDataGrid-columnHeaders': {
-                                        bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)',
-                                        borderBottom: 'none'
-                                    }
-                                }}
-                            />
-                        </Box>
-                    </Paper>
-                </Box>
-            </Container>
-
-            {/* Complaint Detail Dialog */}
-            <Dialog
-                open={!!selectedComplaint}
-                onClose={() => setSelectedComplaint(null)}
-                maxWidth="sm"
-                fullWidth
-                PaperProps={{
-                    sx: {
-                        borderRadius: 4,
-                        bgcolor: theme.palette.mode === 'dark' ? '#1e293b' : '#fff',
-                    }
-                }}
-            >
-                {selectedComplaint && (
-                    <>
-                        <DialogTitle sx={{ pb: 1, pt: 3, px: 3 }}>
-                            <Box display="flex" justifyContent="space-between" alignItems="center">
-                                <Typography variant="h6" fontWeight={700}>
-                                    Complaint #{selectedComplaint.id}
-                                </Typography>
-                                <Chip
-                                    label={selectedComplaint.status?.toUpperCase()}
-                                    size="small"
-                                    sx={{
-                                        fontWeight: 700,
-                                        bgcolor: selectedComplaint.status === 'resolved' ? '#4CAF50' :
-                                            selectedComplaint.status === 'pending' ? '#FFC107' : '#FF4D4D',
-                                        color: '#fff'
-                                    }}
-                                />
-                            </Box>
-                        </DialogTitle>
-                        <Divider />
-                        <DialogContent sx={{ p: 4 }}>
-                            <Stack spacing={3}>
-                                <Box>
-                                    <Typography variant="overline" color="text.secondary" fontWeight={700}>
-                                        Category
-                                    </Typography>
-                                    <Box display="flex" gap={1} alignItems="center">
-                                        <AlertCircle size={18} />
-                                        <Typography variant="body1" fontWeight={600} sx={{ textTransform: 'capitalize' }}>
-                                            {selectedComplaint.category} Issue
-                                        </Typography>
-                                    </Box>
-                                </Box>
-
-                                <Box>
-                                    <Typography variant="overline" color="text.secondary" fontWeight={700}>
-                                        Location
-                                    </Typography>
-                                    <Box display="flex" gap={1} alignItems="center">
-                                        <MapPin size={18} />
-                                        <Typography variant="body1">
-                                            {selectedComplaint.location}
-                                        </Typography>
-                                    </Box>
-                                </Box>
-
-                                <Box>
-                                    <Typography variant="overline" color="text.secondary" fontWeight={700}>
-                                        Description
-                                    </Typography>
-                                    <Paper sx={{ p: 2, bgcolor: theme.palette.action.hover, borderRadius: 2 }} elevation={0}>
-                                        <Typography variant="body1">
-                                            {selectedComplaint.description}
-                                        </Typography>
-                                    </Paper>
-                                </Box>
-
-                                {selectedComplaint.images && selectedComplaint.images.length > 0 && (
-                                    <Box>
-                                        <Typography variant="overline" color="text.secondary" fontWeight={700}>
-                                            Attached Evidence
-                                        </Typography>
-                                        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mt: 1 }}>
-                                            {(() => {
-                                                try {
-                                                    // Handle both stringified JSON and direct array
-                                                    const imgs = typeof selectedComplaint.images === 'string'
-                                                        ? JSON.parse(selectedComplaint.images)
-                                                        : selectedComplaint.images;
-
-                                                    return Array.isArray(imgs) ? imgs.map((img, index) => {
-                                                        // Extract just the filename if a full path was stored
-                                                        const filename = img.split(/[/\\]/).pop();
-                                                        return (
-                                                            <Box
-                                                                key={index}
-                                                                component="img"
-                                                                src={`http://localhost:5000/uploads/${filename}`}
-                                                                alt={`Evidence ${index + 1}`}
-                                                                sx={{
-                                                                    width: 100,
-                                                                    height: 100,
-                                                                    objectFit: 'cover',
-                                                                    borderRadius: 2,
-                                                                    border: `1px solid ${theme.palette.divider}`,
-                                                                    cursor: 'pointer',
-                                                                    '&:hover': { transform: 'scale(1.05)' },
-                                                                    transition: 'transform 0.2s'
-                                                                }}
-                                                                onClick={() => window.open(`http://localhost:5000/uploads/${filename}`, '_blank')}
-                                                            />
-                                                        )
-                                                    }) : null;
-                                                } catch (e) {
-                                                    console.error("Error parsing images", e);
-                                                    return null;
-                                                }
-                                            })()}
-                                        </Box>
+                            <Box sx={{ flex: 1, minHeight: 0 }}>
+                                {clusterData.length > 0 ? (
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={clusterData.slice(0, 5)} layout="vertical" margin={{ left: 10, right: 30, top: 10, bottom: 10 }}>
+                                            <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                                            <XAxis type="number" allowDecimals={false} />
+                                            <YAxis
+                                                dataKey="name"
+                                                type="category"
+                                                width={70}
+                                                tick={{ fontSize: 12, fontWeight: 600 }}
+                                            />
+                                            <RechartsTooltip
+                                                contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                                                cursor={{ fill: 'transparent' }}
+                                            />
+                                            <Bar dataKey="count" name="Complaints" radius={[0, 4, 4, 0]} barSize={30}>
+                                                {clusterData.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={index === 0 ? '#FF4D4D' : '#00D2FF'} />
+                                                ))}
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                ) : (
+                                    <Box display="flex" justifyContent="center" alignItems="center" height="100%">
+                                        <Typography color="text.secondary">No density data available yet</Typography>
                                     </Box>
                                 )}
+                            </Box>
+                        </Paper>
+                    </Grid>
 
-                                <Box>
-                                    <Typography variant="overline" color="text.secondary" fontWeight={700}>
-                                        Date Reported
-                                    </Typography>
-                                    <Typography variant="body2" color="text.secondary">
-                                        {new Date(selectedComplaint.created_at).toLocaleString()}
-                                    </Typography>
+                    {/* Table Section */}
+                    <Grid item xs={12} md={6}>
+                        <Paper elevation={3} sx={{ p: 3, borderRadius: 4, height: 450, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                            <Typography variant="h6" fontWeight={800} mb={2}>Recent Log</Typography>
+                            <Box sx={{ flex: 1, width: '100%' }}>
+                                <DataGrid
+                                    rows={complaints}
+                                    onRowClick={(params) => setSelectedComplaint(params.row)}
+                                    columns={[
+                                        { field: 'category', headerName: 'Category', width: 130 },
+                                        {
+                                            field: 'status',
+                                            headerName: 'Status',
+                                            width: 120,
+                                            renderCell: (params) => (
+                                                <Box sx={{ color: params.value === 'resolved' ? '#4CAF50' : '#ff9800', fontWeight: 'bold' }}>
+                                                    {params.value}
+                                                </Box>
+                                            )
+                                        },
+                                        { field: 'created_at', headerName: 'Date', width: 180, valueGetter: (params) => new Date(params).toLocaleDateString() },
+                                    ]}
+                                    pageSize={5}
+                                    rowsPerPageOptions={[5]}
+                                    hideFooter
+                                    sx={{ border: 'none' }}
+                                />
+                            </Box>
+                        </Paper>
+                    </Grid>
+                </Grid>
+
+                {/* Complaint Detail Dialog with Fixed Evidence UI */}
+                <Dialog
+                    open={!!selectedComplaint}
+                    onClose={() => setSelectedComplaint(null)}
+                    maxWidth="sm"
+                    fullWidth
+                    PaperProps={{ sx: { borderRadius: 4, bgcolor: theme.palette.mode === 'dark' ? '#1e293b' : '#fff' } }}
+                >
+                    {selectedComplaint && (
+                        <>
+                            <DialogTitle sx={{ pb: 1, pt: 3, px: 3 }}>
+                                <Box display="flex" justifyContent="space-between" alignItems="center">
+                                    <Typography variant="h6" fontWeight={700}>#{selectedComplaint.id}</Typography>
+                                    <Chip label={selectedComplaint.status} color={selectedComplaint.status === 'resolved' ? "success" : "warning"} />
                                 </Box>
-                            </Stack>
-                        </DialogContent>
-                        <DialogActions sx={{ p: 3, pt: 0 }}>
-                            <Button
-                                onClick={() => setSelectedComplaint(null)}
-                                variant="outlined"
-                                color="inherit"
-                                sx={{ borderRadius: 2 }}
-                            >
-                                Close
-                            </Button>
-                            {selectedComplaint.status !== 'resolved' && (
-                                <Button
-                                    onClick={() => handleResolve(selectedComplaint.id)}
-                                    variant="contained"
-                                    color="success"
-                                    startIcon={<CheckCircle size={18} />}
-                                    sx={{ borderRadius: 2, px: 3 }}
-                                >
-                                    Mark Resolved
-                                </Button>
-                            )}
-                        </DialogActions>
-                    </>
-                )}
-            </Dialog>
+                            </DialogTitle>
+                            <DialogContent sx={{ p: 4 }}>
+                                <Typography variant="subtitle2" color="text.secondary" fontWeight={700} gutterBottom>ISSUE DESCRIPTION</Typography>
+                                <Typography variant="body1" mb={3} sx={{ p: 2, bgcolor: theme.palette.action.hover, borderRadius: 2 }}>
+                                    {selectedComplaint.description}
+                                </Typography>
+
+                                <Typography variant="caption" display="block" color="text.secondary" gutterBottom>
+                                    <strong>Location:</strong> {selectedComplaint.location}
+                                </Typography>
+
+                                {/* Fixed Evidence Section */}
+                                {parseImages(selectedComplaint.images).length > 0 && (
+                                    <Box mt={3}>
+                                        <Typography variant="subtitle2" color="text.secondary" fontWeight={700} gutterBottom>
+                                            ATTACHED EVIDENCE
+                                        </Typography>
+                                        <ImageList cols={3} rowHeight={100} gap={8}>
+                                            {parseImages(selectedComplaint.images).map((img, index) => {
+                                                // Ensure we handle plain filenames or full paths correctly
+                                                const filename = img.split(/[/\\]/).pop();
+                                                const imageUrl = `http://localhost:5000/uploads/${filename}`;
+                                                return (
+                                                    <ImageListItem key={index}>
+                                                        <img
+                                                            src={imageUrl}
+                                                            srcSet={imageUrl}
+                                                            alt={`Evidence ${index + 1}`}
+                                                            loading="lazy"
+                                                            style={{
+                                                                borderRadius: 8,
+                                                                cursor: 'pointer',
+                                                                height: '100%',
+                                                                objectFit: 'cover',
+                                                                border: '1px solid rgba(140, 140, 140, 0.2)'
+                                                            }}
+                                                            onClick={() => window.open(imageUrl, '_blank')}
+                                                            onError={(e) => {
+                                                                e.target.onerror = null;
+                                                                e.target.src = "https://placehold.co/100x100?text=No+Image";
+                                                            }}
+                                                        />
+                                                    </ImageListItem>
+                                                );
+                                            })}
+                                        </ImageList>
+                                    </Box>
+                                )}
+                            </DialogContent>
+                            <DialogActions sx={{ p: 3 }}>
+                                <Button onClick={() => setSelectedComplaint(null)} color="inherit">Close</Button>
+                                {selectedComplaint.status !== 'resolved' && (
+                                    <Button variant="contained" color="success" onClick={() => handleResolve(selectedComplaint.id)}>Mark Resolved</Button>
+                                )}
+                            </DialogActions>
+                        </>
+                    )}
+                </Dialog>
+            </Container>
         </Box>
     );
 };

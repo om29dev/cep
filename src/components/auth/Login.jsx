@@ -15,8 +15,12 @@ const Login = () => {
         setError('');
         try {
             const user = await login(email, password);
+
+            // FIX: Add specific checks for roles
             if (user.role === 'officer') {
                 navigate('/dashboard');
+            } else if (user.role === 'Admin') {
+                navigate('/admin');
             } else {
                 navigate('/report');
             }

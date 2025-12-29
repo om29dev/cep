@@ -10,11 +10,10 @@ import {
     Drawer,
     List,
     ListItem,
-    ListItemText,
     useTheme,
     Avatar
 } from '@mui/material';
-import { Menu as MenuIcon, Droplets, Sun, Moon, LogOut } from 'lucide-react';
+import { Menu as MenuIcon, Droplets, Sun, Moon, LogOut, ListChecks, LayoutDashboard, PlusCircle } from 'lucide-react';
 import { ColorModeContext } from '../ColorModeContext';
 import { useAuth } from '../AuthContext';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
@@ -69,27 +68,76 @@ const Navbar = () => {
                             </IconButton>
 
                             {user ? (
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, ml: 1 }}>
+                                <>
+                                    {/* ROLE BASED NAVIGATION */}
 
-                                    {user.role === 'Admin' && (
+                                    {/* 1. Officer sees Dashboard */}
+                                    {user.role === 'officer' && (
                                         <Button
                                             component={RouterLink}
-                                            to="/admin"
-                                            variant="contained"
-                                            color="secondary"
-                                            size="small"
+                                            to="/dashboard"
+                                            startIcon={<LayoutDashboard size={18} />}
+                                            color="inherit"
+                                            sx={{ textTransform: 'none', fontWeight: 600 }}
                                         >
-                                            Admin Panel
+                                            Officer Dashboard
                                         </Button>
                                     )}
 
-                                    <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main', fontSize: '1rem' }}>
-                                        {user.username[0].toUpperCase()}
-                                    </Avatar>
-                                    <IconButton onClick={handleLogout} color="error" title="Logout">
-                                        <LogOut size={20} />
-                                    </IconButton>
-                                </Box>
+                                    {/* 2. Citizen sees "My Issues" and "Report" */}
+                                    {user.role === 'citizen' && (
+                                        <>
+                                            <Button
+                                                component={RouterLink}
+                                                to="/my-complaints"
+                                                startIcon={<ListChecks size={18} />}
+                                                color="inherit"
+                                                sx={{ textTransform: 'none', fontWeight: 600 }}
+                                            >
+                                                My Issues
+                                            </Button>
+
+                                            <Button
+                                                component={RouterLink}
+                                                to="/report"
+                                                variant="contained"
+                                                startIcon={<PlusCircle size={18} />}
+                                                sx={{
+                                                    textTransform: 'none',
+                                                    borderRadius: 2,
+                                                    fontWeight: 700,
+                                                    background: 'linear-gradient(45deg, #00D2FF 30%, #3A7BD5 90%)',
+                                                }}
+                                            >
+                                                Report Issue
+                                            </Button>
+                                        </>
+                                    )}
+
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 1, borderLeft: `1px solid ${theme.palette.divider}`, pl: 2 }}>
+                                        <Box
+                                            component={RouterLink}
+                                            to="/profile"
+                                            sx={{ textDecoration: 'none' }}
+                                        >
+                                            <Avatar
+                                                sx={{
+                                                    width: 36,
+                                                    height: 36,
+                                                    bgcolor: 'primary.main',
+                                                    fontSize: '1rem',
+                                                    cursor: 'pointer',
+                                                    border: `2px solid ${theme.palette.background.paper}`
+                                                }}
+                                            >
+                                                {user.username[0].toUpperCase()}
+                                            </Avatar>
+                                        </Box>
+                                        <IconButton onClick={handleLogout} color="error" size="small" title="Logout">
+                                            <LogOut size={20} />
+                                        </IconButton>
+                                    </Box>
+                                </>
                             ) : (
                                 <Box sx={{ display: 'flex', gap: 1, ml: 1 }}>
                                     <Button component={RouterLink} to="/login" variant="outlined" sx={{ borderRadius: 2 }}>
@@ -122,7 +170,7 @@ const Navbar = () => {
                 ModalProps={{ keepMounted: true }}
                 sx={{
                     display: { xs: 'block', md: 'none' },
-                    '& .MuiDrawer-paper': { boxSizing: 'border-box', width: 240, background: theme.palette.background.paper },
+                    '& .MuiDrawer-paper': { boxSizing: 'border-box', width: 280, background: theme.palette.background.paper },
                 }}
             >
                 <Box sx={{ textAlign: 'center', p: 3 }}>
@@ -130,36 +178,80 @@ const Navbar = () => {
                         UIIS
                     </Typography>
                     <List sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-
-                        <ListItem disablePadding sx={{ justifyContent: 'center', mt: 2 }}>
+                        <ListItem disablePadding sx={{ justifyContent: 'center', mb: 2 }}>
                             <IconButton onClick={colorMode.toggleColorMode} color="inherit">
                                 {theme.palette.mode === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
                             </IconButton>
                         </ListItem>
 
                         {user ? (
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, ml: 1 }}>
-                                <Box
-                                    component={RouterLink}
-                                    to="/profile"
-                                    sx={{ textDecoration: 'none', cursor: 'pointer' }}
-                                >
-                                    <Avatar sx={{
-                                        width: 32,
-                                        height: 32,
-                                        bgcolor: 'primary.main',
-                                        fontSize: '1rem',
-                                        transition: 'transform 0.2s',
-                                        '&:hover': { transform: 'scale(1.1)' }
-                                    }}>
-                                        {user.username[0].toUpperCase()}
-                                    </Avatar>
-                                </Box>
+                            <>
+                                {user.role === 'officer' && (
+                                    <ListItem disablePadding>
+                                        <Button
+                                            fullWidth
+                                            component={RouterLink}
+                                            to="/dashboard"
+                                            onClick={handleDrawerToggle}
+                                            startIcon={<LayoutDashboard size={18} />}
+                                            sx={{ justifyContent: 'flex-start', px: 2, py: 1.5 }}
+                                        >
+                                            Officer Dashboard
+                                        </Button>
+                                    </ListItem>
+                                )}
 
-                                <IconButton onClick={handleLogout} color="error" title="Logout">
-                                    <LogOut size={20} />
-                                </IconButton>
-                            </Box>
+                                {user.role === 'citizen' && (
+                                    <>
+                                        <ListItem disablePadding>
+                                            <Button
+                                                fullWidth
+                                                component={RouterLink}
+                                                to="/my-complaints"
+                                                onClick={handleDrawerToggle}
+                                                startIcon={<ListChecks size={18} />}
+                                                sx={{ justifyContent: 'flex-start', px: 2, py: 1.5 }}
+                                            >
+                                                My Issues
+                                            </Button>
+                                        </ListItem>
+                                        <ListItem disablePadding>
+                                            <Button
+                                                fullWidth
+                                                component={RouterLink}
+                                                to="/report"
+                                                onClick={handleDrawerToggle}
+                                                startIcon={<PlusCircle size={18} />}
+                                                sx={{ justifyContent: 'flex-start', px: 2, py: 1.5, color: theme.palette.primary.main }}
+                                            >
+                                                Report Issue
+                                            </Button>
+                                        </ListItem>
+                                    </>
+                                )}
+
+                                <ListItem disablePadding>
+                                    <Button
+                                        fullWidth
+                                        component={RouterLink}
+                                        to="/profile"
+                                        onClick={handleDrawerToggle}
+                                        sx={{ justifyContent: 'flex-start', px: 2, py: 1.5 }}
+                                    >
+                                        My Profile
+                                    </Button>
+                                </ListItem>
+                                <ListItem disablePadding sx={{ mt: 2 }}>
+                                    <Button
+                                        fullWidth
+                                        onClick={() => { handleLogout(); handleDrawerToggle(); }}
+                                        color="error"
+                                        variant="outlined"
+                                    >
+                                        Logout
+                                    </Button>
+                                </ListItem>
+                            </>
                         ) : (
                             <>
                                 <ListItem disablePadding sx={{ mt: 2 }}>
