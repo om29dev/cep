@@ -184,7 +184,7 @@ const OfficerComplaints = () => {
                 <Chip
                     label={params.value.toUpperCase()}
                     size="small"
-                    color={params.value.includes('quality') ? 'error' : 'primary'}
+                    color={params.value.includes('Contaminated') ? 'error' : 'primary'}
                     sx={{ fontWeight: 700, borderRadius: 1 }}
                 />
             )

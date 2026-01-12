@@ -53,8 +53,6 @@ const ComplaintForm = () => {
         location: '',
         description: '',
         images: [],
-        ward: '',
-        constituency: '',
         district: ''
     });
     const [status, setStatus] = useState('idle'); // idle, locating, submitting, success
@@ -80,10 +78,7 @@ const ComplaintForm = () => {
 
             setFormData(prev => ({
                 ...prev,
-                // KEEP LOCATION AS COORDINATES FOR DATABASE
                 location: `${lat}, ${lon}`,
-                ward: '',
-                constituency: '',
                 // Store the name in 'district' just for UI display as "Area"
                 district: areaName
             }));
@@ -92,8 +87,6 @@ const ComplaintForm = () => {
             setFormData(prev => ({
                 ...prev,
                 location: `${lat}, ${lon}`,
-                ward: '',
-                constituency: '',
                 district: "Unknown Area"
             }));
         }
@@ -168,8 +161,6 @@ const ComplaintForm = () => {
             const data = new FormData();
             data.append('location', formData.location);
             data.append('description', formData.description);
-            data.append('ward', formData.ward);
-            data.append('constituency', formData.constituency);
             data.append('district', formData.district);
             formData.images.forEach(img => {
                 data.append('images', img.file);
@@ -187,8 +178,6 @@ const ComplaintForm = () => {
                     location: '',
                     description: '',
                     images: [],
-                    ward: '',
-                    constituency: '',
                     district: ''
                 });
                 setTempPosition(null);

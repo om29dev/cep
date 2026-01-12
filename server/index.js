@@ -9,7 +9,8 @@ const bcrypt = require('bcryptjs'); // Assuming bcryptjs based on typical usage,
 const cookieParser = require('cookie-parser');
 const crypto = require('crypto');
 const fs = require('fs');
-const nodemailer = require('nodemailer'); // Added Nodemailer
+const nodemailer = require('nodemailer');
+const { analyzeComplaint } = require('./ai_service'); // Added AI Service
 
 dotenv.config();
 
@@ -70,26 +71,34 @@ const checkRole = (roles) => (req, res, next) => {
 const predictCategory = (description) => {
     const desc = description.toLowerCase();
 
-    if (desc.includes('water') || desc.includes('supply') || desc.includes('leak') || desc.includes('pipe') || desc.includes('pressure') || desc.includes('dirty')) {
-        return 'Water Supply';
-    }
-    if (desc.includes('road') || desc.includes('pothole') || desc.includes('traffic') || desc.includes('street') || desc.includes('asphalt')) {
-        return 'Roads & Infrastructure';
-    }
-    if (desc.includes('electric') || desc.includes('power') || desc.includes('light') || desc.includes('pole') || desc.includes('voltage') || desc.includes('blackout')) {
-        return 'Electricity';
-    }
-    if (desc.includes('waste') || desc.includes('garbage') || desc.includes('trash') || desc.includes('clean') || desc.includes('drain') || desc.includes('sewage')) {
-        return 'Waste Management';
-    }
-    if (desc.includes('noise') || desc.includes('loud') || desc.includes('speaker')) {
-        return 'Noise Pollution';
-    }
-    if (desc.includes('tree') || desc.includes('park') || desc.includes('garden')) {
-        return 'Parks & Greenery';
+    // Check if it's even about water
+    const waterKeywords = ['water', 'pipe', 'supply', 'leak', 'drain', 'sewer', 'sewage', 'pressure', 'hydrant', 'tanker', 'dirty', 'contamination', 'meter', 'valve'];
+    const isWaterRelated = waterKeywords.some(keyword => desc.includes(keyword));
+
+    if (!isWaterRelated) {
+        return 'Non-Water Related';
     }
 
-    return 'General Grievance';
+    if (desc.includes('no water') || desc.includes('cutdown') || desc.includes('not coming') || desc.includes('supply')) {
+        return 'No Water Supply';
+    }
+    if (desc.includes('leak') || desc.includes('burst') || desc.includes('flow') || desc.includes('open pipe')) {
+        return 'Water Leakage';
+    }
+    if (desc.includes('dirty') || desc.includes('smell') || desc.includes('color') || desc.includes('quality') || desc.includes('contamination')) {
+        return 'Contaminated Water';
+    }
+    if (desc.includes('low') || desc.includes('slow') || desc.includes('pressure')) {
+        return 'Low Water Pressure';
+    }
+    if (desc.includes('drain') || desc.includes('sewage') || desc.includes('sewer') || desc.includes('overflow') || desc.includes('blockage')) {
+        return 'Drainage & Sewage';
+    }
+    if (desc.includes('illegal') || desc.includes('theft') || desc.includes('direct connection')) {
+        return 'Illegal Connection';
+    }
+
+    return 'Other Water Issue';
 };
 
 // ... existing code ...
@@ -117,15 +126,16 @@ const initDb = async () => {
                 description TEXT NOT NULL,
                 images JSONB DEFAULT '[]',
                 status TEXT DEFAULT 'pending',
-                ward TEXT,
-                constituency TEXT,
                 district TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 resolved_at TIMESTAMP,
                 resolution_remarks TEXT,
                 resolution_images JSONB DEFAULT '[]',
                 hash TEXT,
-                previous_hash TEXT
+                previous_hash TEXT,
+                ai_summary TEXT,
+                ai_urgency TEXT,
+                ai_sentiment TEXT
             );
 
             CREATE TABLE IF NOT EXISTS otp_verifications (
@@ -318,26 +328,34 @@ app.post('/api/auth/logout', (req, res) => {
 // Complaint Routes
 app.post('/api/complaints', verifyToken, checkRole(['citizen']), upload.array('images'), async (req, res) => {
     try {
-        const { location, description, ward, constituency, district } = req.body;
-        // AI: Predict Category
-        const category = predictCategory(description);
+        const { location, description, district } = req.body;
+
+        // AI: Intelligent Analysis
+        const aiAnalysis = await analyzeComplaint(description);
+
+        // Fallback to heuristic if AI fails or key is missing
+        const category = aiAnalysis?.category || predictCategory(description);
+
+        if (category === 'Non-Water Related') {
+            return res.status(400).json({ error: 'This system only supports water-related issues. Please report other municipal problems (roads, electricity, etc.) to the appropriate department.' });
+        }
+
+        const ai_summary = aiAnalysis?.summary || description.substring(0, 100) + '...';
+        const ai_urgency = aiAnalysis?.urgency || 'Medium';
+        const ai_sentiment = aiAnalysis?.sentiment || 'Neutral';
 
         const imagePaths = req.files.map(file => file.filename);
 
         // Blockchain: Get last hash
         const lastComplaintResult = await pool.query('SELECT hash FROM complaints ORDER BY id DESC LIMIT 1');
-        const previousHash = lastComplaintResult.rows.length > 0 ? lastComplaintResult.rows[0].hash : '0000000000000000000000000000000000000000000000000000000000000000'; // Genesis Hash
+        const previousHash = lastComplaintResult.rows.length > 0 ? lastComplaintResult.rows[0].hash : '0000000000000000000000000000000000000000000000000000000000000000';
 
-        // Blockchain: Create new hash
-        // We include immutable fields: user_id, category, location, description, specific location details, timestamp (implicitly via uniqueness), and previous_hash
-        // Note: For strict immutability, we should include a timestamp generated here, but db 'created_at' is generated on insert. 
-        // Ideally we generate timestamp here. For now, we use a rough timestamp or just the content content which makes it content-addressable + chain.
-        const dataToHash = `${req.user.id}${category}${location}${description}${ward}${constituency}${district}${previousHash} `;
+        const dataToHash = `${req.user.id}${category}${location}${description}${district}${previousHash}${ai_summary}${ai_urgency}`;
         const hash = crypto.createHash('sha256').update(dataToHash).digest('hex');
 
         const result = await pool.query(
-            'INSERT INTO complaints (user_id, category, location, description, images, ward, constituency, district, previous_hash, hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *',
-            [req.user.id, category, location, description, JSON.stringify(imagePaths), ward, constituency, district, previousHash, hash]
+            'INSERT INTO complaints (user_id, category, location, description, images, district, previous_hash, hash, ai_summary, ai_urgency, ai_sentiment) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *',
+            [req.user.id, category, location, description, JSON.stringify(imagePaths), district, previousHash, hash, ai_summary, ai_urgency, ai_sentiment]
         );
         res.status(201).json(result.rows[0]);
     } catch (err) {

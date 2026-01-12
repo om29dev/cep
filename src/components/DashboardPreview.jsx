@@ -277,11 +277,15 @@ const DashboardPreview = () => {
     };
 
     // --- ANALYTICS ---
+    const activeComplaints = complaints.filter(c => c.status !== 'resolved');
+    const resolvedComplaints = complaints.filter(c => c.status === 'resolved');
+    const criticalIssues = complaints.filter(c => c.status !== 'resolved' && (c.category === 'No Water Supply' || c.category === 'Contaminated Water' || c.category === 'Water Leakage')).length;
+
     const clusterData = useMemo(() => {
         const clusters = [];
         const processedIds = new Set();
         const RADIUS_KM = 1.0;
-        const validComplaints = complaints.filter(c => c.status !== 'resolved' && getPosition(c.location));
+        const validComplaints = activeComplaints.filter(c => getPosition(c.location));
 
         validComplaints.forEach((current) => {
             if (processedIds.has(current.id)) return;
@@ -309,11 +313,7 @@ const DashboardPreview = () => {
             clusters.push(newCluster);
         });
         return clusters.sort((a, b) => b.count - a.count);
-    }, [complaints]);
-
-    const activeComplaints = complaints.filter(c => c.status !== 'resolved');
-    const resolvedComplaints = complaints.filter(c => c.status === 'resolved');
-    const criticalIssues = complaints.filter(c => c.status !== 'resolved' && (c.category === 'supply' || c.category === 'quality')).length;
+    }, [activeComplaints]);
 
     // Data for Pie Chart
     const categoryData = useMemo(() => {
@@ -363,14 +363,23 @@ const DashboardPreview = () => {
                 {/* STATS ROW */}
                 <Grid container spacing={3} sx={{ mb: 4 }}>
                     <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                        <StatCard title="Total Complaints" value={complaints.length} icon={Users} color="#3b82f6" />
+                        <StatCard title="Total Active Issues" value={activeComplaints.length} icon={Users} color="#3b82f6" />
                     </Grid>
 
                     <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                        <StatCard title="Contamination Alerts" value={activeComplaints.filter(c => c.category && c.category.includes('quality')).length} icon={Droplets} color="#f59e0b" />
+                        <StatCard title="Water Quality Alerts" value={activeComplaints.filter(c => c.category && c.category.includes('Contaminated')).length} icon={Droplets} color="#f59e0b" />
                     </Grid>
                     <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                         <StatCard title="Active Hotspots" value={clusterData.filter(c => c.count > 1).length} icon={MapIcon} color="#f59e0b" />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                        <StatCard
+                            title="AI Intelligence"
+                            value={activeComplaints.filter(c => c.ai_urgency === 'Emergency' || c.ai_urgency === 'High').length}
+                            icon={Activity}
+                            color="#ef4444"
+                            trend="High Priority Issues"
+                        />
                     </Grid>
                 </Grid>
 
@@ -466,16 +475,26 @@ const DashboardPreview = () => {
                                             <Marker key={complaint.id} position={pos}>
                                                 <Popup>
                                                     <Box sx={{ p: 1 }}>
-                                                        <Chip
-                                                            label={complaint.category.toUpperCase()}
-                                                            size="small"
-                                                            color={complaint.category === 'supply' ? 'error' : 'primary'}
-                                                            sx={{ mb: 1, fontSize: '10px', height: 20 }}
-                                                        />
+                                                        <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                                                            <Chip
+                                                                label={complaint.category.toUpperCase()}
+                                                                size="small"
+                                                                color={complaint.ai_urgency === 'Emergency' ? 'error' : 'primary'}
+                                                                sx={{ fontSize: '10px', height: 20 }}
+                                                            />
+                                                            {complaint.ai_urgency && (
+                                                                <Typography variant="caption" sx={{ color: complaint.ai_urgency === 'Emergency' ? '#ef4444' : 'text.secondary', fontWeight: 700 }}>
+                                                                    {complaint.ai_urgency}
+                                                                </Typography>
+                                                            )}
+                                                        </Box>
                                                         <LocationResolver
                                                             locationString={complaint.location}
                                                             district={complaint.district}
                                                         />
+                                                        <Typography variant="body2" sx={{ mt: 1, mb: 1, fontStyle: 'italic', color: 'text.secondary', fontSize: '0.75rem' }}>
+                                                            AI Summary: {complaint.ai_summary || complaint.description.substring(0, 50) + '...'}
+                                                        </Typography>
                                                         <Typography variant="caption" display="block" sx={{ mb: 1, opacity: 0.8 }}>
                                                             {new Date(complaint.created_at).toLocaleDateString()}
                                                         </Typography>
@@ -515,13 +534,13 @@ const DashboardPreview = () => {
                                     <Typography variant="subtitle2" fontWeight={800} sx={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                                         Incoming Feed
                                     </Typography>
-                                    <Badge badgeContent={complaints.length} color="error" variant="dot">
+                                    <Badge badgeContent={activeComplaints.length} color="error" variant="dot">
                                         <Typography variant="caption" sx={{ opacity: 0.7, fontWeight: 600 }}>LIVE</Typography>
                                     </Badge>
                                 </Box>
 
                                 <Box sx={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', flex: 1 }}>
-                                    {complaints.map((complaint, index) => (
+                                    {activeComplaints.map((complaint, index) => (
                                         <Box key={complaint.id}
                                             // Disabled Click
                                             sx={{
@@ -537,8 +556,8 @@ const DashboardPreview = () => {
                                                     width: 8,
                                                     height: 8,
                                                     borderRadius: '50%',
-                                                    backgroundColor: complaint.category && complaint.category.includes('quality') ? '#ef4444' : '#3b82f6',
-                                                    boxShadow: `0 0 8px ${complaint.category && complaint.category.includes('quality') ? '#ef4444' : '#3b82f6'}`
+                                                    backgroundColor: complaint.ai_urgency === 'Emergency' ? '#ef4444' : (complaint.ai_urgency === 'High' ? '#f59e0b' : '#3b82f6'),
+                                                    boxShadow: `0 0 8px ${complaint.ai_urgency === 'Emergency' ? '#ef4444' : (complaint.ai_urgency === 'High' ? '#f59e0b' : '#3b82f6')}`
                                                 }} />
                                             </Box>
                                             <Box sx={{ flex: 1 }}>
@@ -546,12 +565,28 @@ const DashboardPreview = () => {
                                                     <Typography variant="caption" fontWeight={700} color="text.secondary" fontFamily="monospace">
                                                         #{complaint.id} • {complaint.category?.toUpperCase() || 'GENERAL'}
                                                     </Typography>
-                                                    <Typography variant="caption" color="text.secondary">
-                                                        {new Date(complaint.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                    </Typography>
+                                                    <Box display="flex" gap={1} alignItems="center">
+                                                        {complaint.ai_urgency && (
+                                                            <Chip
+                                                                label={complaint.ai_urgency}
+                                                                size="small"
+                                                                variant="outlined"
+                                                                sx={{
+                                                                    height: 16,
+                                                                    fontSize: '8px',
+                                                                    fontWeight: 800,
+                                                                    borderColor: complaint.ai_urgency === 'Emergency' ? '#ef4444' : 'divider',
+                                                                    color: complaint.ai_urgency === 'Emergency' ? '#ef4444' : 'text.secondary'
+                                                                }}
+                                                            />
+                                                        )}
+                                                        <Typography variant="caption" color="text.secondary">
+                                                            {new Date(complaint.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        </Typography>
+                                                    </Box>
                                                 </Box>
                                                 <Typography variant="body2" fontWeight={600} sx={{ mb: 0.5, color: 'text.primary', fontSize: '0.85rem' }}>
-                                                    {complaint.description.substring(0, 60)}{complaint.description.length > 60 ? '...' : ''}
+                                                    {complaint.ai_summary || complaint.description.substring(0, 60)}
                                                 </Typography>
                                                 <Box display="flex" alignItems="center" gap={0.5}>
                                                     <MapIcon size={12} style={{ opacity: 0.5 }} />
@@ -671,7 +706,7 @@ const DashboardPreview = () => {
                                             <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ mb: 1, display: 'block' }}>JURISDICTION</Typography>
                                             <Stack direction="row" spacing={1} flexWrap="wrap">
                                                 <Chip
-                                                    label={`Area: ${selectedComplaint.district || selectedComplaint.constituency || "Unknown Area"}`}
+                                                    label={`Area: ${selectedComplaint.district || "Unknown Area"}`}
                                                     variant="outlined"
                                                     sx={{
                                                         borderColor: '#3b82f6',
@@ -680,6 +715,18 @@ const DashboardPreview = () => {
                                                         fontWeight: 600
                                                     }}
                                                 />
+                                                {selectedComplaint.ai_sentiment && (
+                                                    <Chip
+                                                        label={`Tone: ${selectedComplaint.ai_sentiment}`}
+                                                        variant="outlined"
+                                                        sx={{
+                                                            borderColor: '#8b5cf6',
+                                                            color: '#c4b5fd',
+                                                            bgcolor: 'rgba(139, 92, 246, 0.1)',
+                                                            fontWeight: 600
+                                                        }}
+                                                    />
+                                                )}
                                             </Stack>
                                         </Box>
                                         <Divider orientation="vertical" flexItem />
