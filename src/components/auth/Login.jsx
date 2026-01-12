@@ -4,7 +4,7 @@ import { useAuth } from '../../AuthContext';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 
 const Login = () => {
-    const [email, setEmail] = useState('');
+    const [username, setUsername] = useState(''); // Changed from email
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const { login } = useAuth();
@@ -14,7 +14,8 @@ const Login = () => {
         e.preventDefault();
         setError('');
         try {
-            const user = await login(email, password);
+            // Passing username instead of email
+            const user = await login(username, password);
 
             // Fix: Normalize role to lowercase for comparison
             const role = user.role.toLowerCase();
@@ -45,11 +46,12 @@ const Login = () => {
                             margin="normal"
                             required
                             fullWidth
-                            label="Email Address"
-                            autoComplete="email"
+                            label="Username" // Label Changed
+                            name="username"  // Name Changed
+                            autoComplete="username"
                             autoFocus
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
                         />
                         <TextField
                             margin="normal"

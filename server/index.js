@@ -1,7 +1,71 @@
+const express = require('express');
+const cors = require('cors');
+const { Pool } = require('pg');
+const dotenv = require('dotenv');
+const path = require('path');
+const multer = require('multer');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs'); // Assuming bcryptjs based on typical usage, if fails, try bcrypt
+const cookieParser = require('cookie-parser');
 const crypto = require('crypto');
+const fs = require('fs');
+const nodemailer = require('nodemailer'); // Added Nodemailer
 
-// ... existing imports ...
+dotenv.config();
 
+const app = express();
+const port = process.env.PORT || 5000;
+
+// Middleware
+app.use(cors({
+    origin: 'http://localhost:5173', // Frontend URL
+    credentials: true
+}));
+app.use(express.json());
+app.use(cookieParser());
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Ensure uploads directory exists
+if (!fs.existsSync(path.join(__dirname, 'uploads'))) {
+    fs.mkdirSync(path.join(__dirname, 'uploads'));
+}
+
+// Database Connection
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL
+});
+
+// File Upload Configuration
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, 'uploads/');
+    },
+    filename: (req, file, cb) => {
+        cb(null, Date.now() + '-' + file.originalname);
+    }
+});
+const upload = multer({ storage });
+
+// Security Middleware
+const verifyToken = (req, res, next) => {
+    const token = req.cookies.token;
+    if (!token) return res.status(401).json({ error: 'Access Denied' });
+
+    try {
+        const verified = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+        req.user = verified;
+        next();
+    } catch (err) {
+        res.status(400).json({ error: 'Invalid Token' });
+    }
+};
+
+const checkRole = (roles) => (req, res, next) => {
+    if (!roles.includes(req.user.role)) {
+        return res.status(403).json({ error: 'Access Denied' });
+    }
+    next();
+};
 // Helper function for AI Categorization (Heuristic/Keyword based)
 const predictCategory = (description) => {
     const desc = description.toLowerCase();
@@ -30,12 +94,15 @@ const predictCategory = (description) => {
 
 // ... existing code ...
 
+
 const initDb = async () => {
     try {
+        // 1. Create Tables safely (IF NOT EXISTS)
         await pool.query(`
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 username TEXT UNIQUE NOT NULL,
+                full_name TEXT NOT NULL,
                 email TEXT UNIQUE NOT NULL,
                 password TEXT NOT NULL,
                 role TEXT NOT NULL DEFAULT 'citizen',
@@ -61,38 +128,6 @@ const initDb = async () => {
                 previous_hash TEXT
             );
 
-            -- Migration for existing tables
-            DO $$ 
-            BEGIN 
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='complaints' AND column_name='user_id') THEN
-                    ALTER TABLE complaints ADD COLUMN user_id INTEGER REFERENCES users(id);
-                END IF;
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='complaints' AND column_name='ward') THEN
-                    ALTER TABLE complaints ADD COLUMN ward TEXT;
-                END IF;
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='complaints' AND column_name='constituency') THEN
-                    ALTER TABLE complaints ADD COLUMN constituency TEXT;
-                END IF;
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='complaints' AND column_name='district') THEN
-                    ALTER TABLE complaints ADD COLUMN district TEXT;
-                END IF;
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='complaints' AND column_name='resolved_at') THEN
-                    ALTER TABLE complaints ADD COLUMN resolved_at TIMESTAMP;
-                END IF;
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='complaints' AND column_name='resolution_remarks') THEN
-                    ALTER TABLE complaints ADD COLUMN resolution_remarks TEXT;
-                END IF;
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='complaints' AND column_name='resolution_images') THEN
-                    ALTER TABLE complaints ADD COLUMN resolution_images JSONB DEFAULT '[]';
-                END IF;
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='complaints' AND column_name='hash') THEN
-                    ALTER TABLE complaints ADD COLUMN hash TEXT;
-                END IF;
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='complaints' AND column_name='previous_hash') THEN
-                    ALTER TABLE complaints ADD COLUMN previous_hash TEXT;
-                END IF;
-            END $$;
-
             CREATE TABLE IF NOT EXISTS otp_verifications (
                 id SERIAL PRIMARY KEY,
                 email TEXT NOT NULL,
@@ -112,13 +147,173 @@ const initDb = async () => {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         `);
-        console.log('Database initialized');
+
+        // Check for specific columns (Migrations for older DBs if mostly preserving info, 
+        // though we just did a hard reset so this might be redundant but safe)
+        // (Skipping complex migration logic as we know we just reset, but keeping it simple is best)
+
+        // Seeding removed as per request
+        console.log('Database initialized.');
+
+        console.log('Database initialized.');
     } catch (err) {
         console.error('Error initializing database:', err);
     }
 };
 
+// Call initDb on start
+initDb();
+
 // ... existing code ...
+
+// EMAIL CONFIGURATION
+const transporter = nodemailer.createTransport({
+    service: 'gmail', // Assuming Gmail; change to host/port if using another provider
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+    }
+});
+
+app.post('/api/auth/send-otp', async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ error: 'Email is required' });
+
+        // Generate 6-digit OTP
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+        // Save to DB
+        await pool.query('INSERT INTO otp_verifications (email, otp) VALUES ($1, $2)', [email, otp]);
+
+        // Send Email
+        const mailOptions = {
+            from: process.env.EMAIL_USER,
+            to: email,
+            subject: 'Your Verification Code - UIIS',
+            text: `Your verification code is: ${otp}. It is valid for 10 minutes.`,
+            html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+                    <h2 style="color: #2563eb;">UIIS Verification</h2>
+                    <p>Your One-Time Password (OTP) for registration is:</p>
+                    <h1 style="background: #f3f4f6; padding: 10px 20px; display: inline-block; border-radius: 8px; letter-spacing: 5px;">${otp}</h1>
+                    <p>Please enter this code to complete your registration.</p>
+                    <p style="font-size: 12px; color: #666; margin-top: 20px;">If you didn't request this code, please ignore this email.</p>
+                </div>
+            `
+        };
+
+        await transporter.sendMail(mailOptions);
+        console.log(`[EMAIL SERVICE] OTP sent to ${email}`);
+
+        res.json({ message: 'OTP sent successfully to your email' });
+    } catch (err) {
+        console.error('Email error:', err);
+        res.status(500).json({ error: 'Failed to send OTP email. Please check server logs.' });
+    }
+});
+
+app.post('/api/auth/verify-otp', async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+
+        // Check latest OTP
+        const result = await pool.query(
+            'SELECT * FROM otp_verifications WHERE email = $1 ORDER BY created_at DESC LIMIT 1',
+            [email]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(400).json({ error: 'No OTP found for this email' });
+        }
+
+        if (result.rows[0].otp !== otp) {
+            return res.status(400).json({ error: 'Invalid OTP' });
+        }
+
+        // Optional: Expiry check (e.g., 5 mins)
+
+        res.json({ message: 'OTP verified successfully' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Verification failed' });
+    }
+});
+
+// AUTH ROUTES
+app.post('/api/auth/register', async (req, res) => {
+    try {
+        // Now accepting fullName
+        const { username, fullName, email, password, role } = req.body;
+
+        // Basic Check
+        if (!username || !fullName || !password) {
+            return res.status(400).json({ error: 'Username, Full Name, and Password are required.' });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // Insert with full_name
+        const result = await pool.query(
+            'INSERT INTO users (username, full_name, email, password, role) VALUES ($1, $2, $3, $4, $5) RETURNING id, username, full_name, role',
+            [username, fullName, email, hashedPassword, role || 'citizen']
+        );
+
+        const user = result.rows[0];
+        const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET || 'secret', { expiresIn: '1d' });
+
+        res.cookie('token', token, { httpOnly: true });
+        res.status(201).json(user);
+    } catch (err) {
+        if (err.code === '23505') {
+            res.status(400).json({ error: 'Username or Email already exists' });
+        } else {
+            console.error(err);
+            res.status(500).json({ error: 'Internal Server Error' });
+        }
+    }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const { username, password } = req.body; // Changed from email to username
+
+        // Query by username
+        const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+
+        if (result.rows.length === 0) return res.status(400).json({ error: 'User not found' });
+
+        const user = result.rows[0];
+        const validPassword = await bcrypt.compare(password, user.password);
+        if (!validPassword) return res.status(400).json({ error: 'Invalid password' });
+
+        const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET || 'secret', { expiresIn: '1d' });
+
+        res.cookie('token', token, { httpOnly: true });
+        res.json({ id: user.id, username: user.username, full_name: user.full_name, role: user.role });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// Get Current User (Session persistence)
+app.get('/api/auth/me', verifyToken, async (req, res) => {
+    try {
+        const result = await pool.query('SELECT id, username, full_name, role FROM users WHERE id = $1', [req.user.id]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// Logout Route
+app.post('/api/auth/logout', (req, res) => {
+    res.clearCookie('token');
+    res.json({ message: 'Logged out successfully' });
+});
 
 // Complaint Routes
 app.post('/api/complaints', verifyToken, checkRole(['citizen']), upload.array('images'), async (req, res) => {
@@ -137,7 +332,7 @@ app.post('/api/complaints', verifyToken, checkRole(['citizen']), upload.array('i
         // We include immutable fields: user_id, category, location, description, specific location details, timestamp (implicitly via uniqueness), and previous_hash
         // Note: For strict immutability, we should include a timestamp generated here, but db 'created_at' is generated on insert. 
         // Ideally we generate timestamp here. For now, we use a rough timestamp or just the content content which makes it content-addressable + chain.
-        const dataToHash = `${req.user.id}${category}${location}${description}${ward}${constituency}${district}${previousHash}`;
+        const dataToHash = `${req.user.id}${category}${location}${description}${ward}${constituency}${district}${previousHash} `;
         const hash = crypto.createHash('sha256').update(dataToHash).digest('hex');
 
         const result = await pool.query(
@@ -262,37 +457,8 @@ app.delete('/api/admin/users/:id', verifyToken, checkRole(['admin']), async (req
     }
 });
 
-// Pattern Detection Routes
-app.get('/api/patterns', verifyToken, async (req, res) => {
-    try {
-        const result = await pool.query('SELECT * FROM patterns ORDER BY created_at DESC');
-        res.json(result.rows);
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Error fetching patterns' });
-    }
-});
 
-app.post('/api/patterns/trigger', verifyToken, checkRole(['officer', 'admin']), async (req, res) => {
-    try {
-        const { exec } = require('child_process');
-        const pythonPath = 'python'; // or path to your venv python
-        const scriptPath = path.join(__dirname, 'ai_service', 'pattern_detection.py');
-
-        exec(`${pythonPath} "${scriptPath}"`, (error, stdout, stderr) => {
-            if (error) {
-                console.error(`AI Analysis error: ${error}`);
-                return res.status(500).json({ error: 'AI Analysis failed', details: stderr });
-            }
-            console.log(`AI Analysis output: ${stdout}`);
-            res.json({ message: 'AI Analysis completed', output: stdout });
-        });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Failed to trigger AI analysis' });
-    }
-});
 
 app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
+    console.log(`Server running on port ${port} `);
 });

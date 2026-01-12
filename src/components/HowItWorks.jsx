@@ -10,9 +10,9 @@ const steps = [
         icon: <TextCursorInput size={24} />
     },
     {
-        label: 'Intelligence Engine',
-        description: `Our backend cleans, normalizes, and clusters similar water complaints to detect 
-    strong recurring patterns, contamination zones, and infrastructure failure hotspots.`,
+        label: 'Data Analysis System',
+        description: `Our system normalizes and clusters similar water complaints to detect 
+    recurring problem areas and infrastructure failure hotspots.`,
         icon: <Database size={24} />
     },
     {

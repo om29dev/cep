@@ -102,15 +102,7 @@ const Navbar = () => {
                                             >
                                                 Issues List
                                             </Button>
-                                            <Button
-                                                component={RouterLink}
-                                                to="/patterns"
-                                                startIcon={<BrainCircuit size={18} />}
-                                                color="inherit"
-                                                sx={{ textTransform: 'none', fontWeight: 600 }}
-                                            >
-                                                AI Patterns
-                                            </Button>
+
                                         </>
                                     )}
 
@@ -210,11 +202,7 @@ const Navbar = () => {
                                                 Issues List
                                             </Button>
                                         </ListItem>
-                                        <ListItem disablePadding>
-                                            <Button fullWidth component={RouterLink} to="/patterns" onClick={handleDrawerToggle} startIcon={<BrainCircuit size={18} />} sx={{ justifyContent: 'flex-start', px: 2, py: 1.5 }}>
-                                                AI Patterns
-                                            </Button>
-                                        </ListItem>
+
                                     </>
                                 )}
 

@@ -8,7 +8,7 @@ import BlockchainFeature from './components/BlockchainFeature';
 import DashboardPreview from './components/DashboardPreview';
 import UserComplaints from './components/UserComplaints';
 import AdminDashboard from './components/AdminDashboard';
-import PatternsDashboard from './components/PatternsDashboard';
+
 import ComplaintForm from './components/ComplaintForm';
 import Footer from './components/Footer';
 import Login from './components/auth/Login';
@@ -70,7 +70,7 @@ function App() {
 
                     <Route path="/dashboard" element={<ProtectedRoute allowedRoles={['officer']}><DashboardPreview /></ProtectedRoute>} />
                     <Route path="/officer-complaints" element={<ProtectedRoute allowedRoles={['officer']}><OfficerComplaints /></ProtectedRoute>} />
-                    <Route path="/patterns" element={<ProtectedRoute allowedRoles={['officer', 'admin']}><PatternsDashboard /></ProtectedRoute>} />
+
                     <Route path="/my-complaints" element={<ProtectedRoute allowedRoles={['citizen']}><UserComplaints /></ProtectedRoute>} />
                     <Route path="/report" element={<ProtectedRoute allowedRoles={['citizen']}><ComplaintForm /></ProtectedRoute>} />
 

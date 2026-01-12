@@ -37,9 +37,7 @@ import {
     CheckCircle2,
     Clock,
     AlertTriangle,
-    Map as MapIcon,
-    BrainCircuit,
-    ArrowRight
+    Map as MapIcon
 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -99,6 +97,57 @@ const AutoRecenterMap = ({ complaints, getPosition }) => {
     return null;
 };
 
+// Internal component to handle reverse geocoding (Adapted for Dashboard)
+const LocationResolver = ({ locationString, district, variant = "subtitle2" }) => {
+    const [address, setAddress] = useState(district || null);
+
+    useEffect(() => {
+        // If we already have a blockchain-verified district, use it.
+        if (district) {
+            setAddress(district);
+            return;
+        }
+
+        if (!locationString) {
+            setAddress("Location N/A");
+            return;
+        }
+
+        const fetchAddress = async () => {
+            const cleanLoc = locationString.replace(/[()]/g, '');
+            const [lat, lng] = cleanLoc.split(',').map(s => s.trim());
+
+            if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
+                setAddress(locationString);
+                return;
+            }
+
+            try {
+                // Using OpenStreetMap Nominatim API
+                const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14`);
+                const data = await response.json();
+
+                const addr = data.address || {};
+                // Prioritize District/Area names
+                const region = addr.city_district || addr.suburb || addr.neighbourhood || addr.town || addr.city || "Unknown Region";
+                setAddress(region);
+            } catch (error) {
+                setAddress(locationString);
+            }
+        };
+
+        // Small delay to prevent rate limiting if many markers load
+        const timer = setTimeout(fetchAddress, Math.random() * 1000 + 500);
+        return () => clearTimeout(timer);
+    }, [locationString, district]);
+
+    return (
+        <Typography variant={variant} fontWeight={800} sx={{ textTransform: 'capitalize' }}>
+            {address || "Loading..."}
+        </Typography>
+    );
+};
+
 const StatCard = ({ title, value, icon: Icon, color, trend }) => {
     const theme = useTheme();
     return (
@@ -106,7 +155,7 @@ const StatCard = ({ title, value, icon: Icon, color, trend }) => {
             elevation={0}
             sx={{
                 p: 3,
-                borderRadius: 2, // Sharper corners for professional look
+                borderRadius: 0, // Sharper corners for professional look
                 display: 'flex',
                 alignItems: 'center',
                 gap: 3,
@@ -124,7 +173,7 @@ const StatCard = ({ title, value, icon: Icon, color, trend }) => {
         >
             <Box sx={{
                 p: 2,
-                borderRadius: 1.5,
+                borderRadius: 0,
                 bgcolor: `${color}10`, // Subtle tint
                 display: 'flex',
                 alignItems: 'center',
@@ -163,7 +212,6 @@ const DashboardPreview = () => {
     const theme = useTheme();
     const navigate = useNavigate();
     const [complaints, setComplaints] = useState([]);
-    const [patterns, setPatterns] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedComplaint, setSelectedComplaint] = useState(null);
 
@@ -177,18 +225,9 @@ const DashboardPreview = () => {
         }
     };
 
-    const fetchPatterns = async () => {
-        try {
-            const response = await axios.get('/api/patterns');
-            setPatterns(response.data);
-        } catch (err) {
-            console.error("Failed to fetch patterns", err);
-        }
-    }
-
     const refreshData = async () => {
         setLoading(true);
-        await Promise.all([fetchComplaints(), fetchPatterns()]);
+        await fetchComplaints();
         setLoading(false);
     }
 
@@ -313,21 +352,10 @@ const DashboardPreview = () => {
                             variant="outlined"
                             startIcon={<Activity />}
                             onClick={refreshData}
-                            sx={{ borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' }}
+                            sx={{ borderRadius: 0, border: '1px solid rgba(255,255,255,0.1)' }}
                         >
                             Refresh Live Data
-                        </Button>
-                        <Button
-                            variant="contained"
-                            startIcon={<BrainCircuit />}
-                            onClick={() => navigate('/patterns')}
-                            sx={{
-                                borderRadius: '12px',
-                                background: 'linear-gradient(45deg, #6366f1 0%, #8b5cf6 100%)',
-                                boxShadow: '0 4px 15px rgba(99, 102, 241, 0.4)'
-                            }}
-                        >
-                            AI Intelligence
+
                         </Button>
                     </Stack>
                 </Box>
@@ -337,23 +365,12 @@ const DashboardPreview = () => {
                     <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                         <StatCard title="Total Complaints" value={complaints.length} icon={Users} color="#3b82f6" />
                     </Grid>
-                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                        <StatCard
-                            title="Avg. Crisis Score"
-                            value={patterns.length > 0
-                                ? Math.round(patterns.reduce((acc, curr) => acc + (parseInt(curr.severity === 'CRITICAL' ? 85 : curr.severity === 'HIGH' ? 60 : 30)), 0) / patterns.length) + "/100"
-                                : "N/A"
-                            }
-                            icon={Activity}
-                            color="#ef4444"
-                            trend={patterns.length > 0 ? "Live Calc" : "No Data"}
-                        />
-                    </Grid>
+
                     <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                         <StatCard title="Contamination Alerts" value={activeComplaints.filter(c => c.category && c.category.includes('quality')).length} icon={Droplets} color="#f59e0b" />
                     </Grid>
                     <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                        <StatCard title="High Density Zones" value={clusterData.filter(c => c.count > 1).length} icon={MapIcon} color="#f59e0b" />
+                        <StatCard title="Active Hotspots" value={clusterData.filter(c => c.count > 1).length} icon={MapIcon} color="#f59e0b" />
                     </Grid>
                 </Grid>
 
@@ -363,7 +380,7 @@ const DashboardPreview = () => {
                     <Grid size={{ xs: 12, lg: 8 }}>
                         <Paper sx={{
                             height: '650px',
-                            borderRadius: 3,
+                            borderRadius: 0,
                             overflow: 'hidden',
                             position: 'relative',
                             bgcolor: theme.palette.mode === 'dark' ? '#1e293b' : '#ffffff',
@@ -393,7 +410,7 @@ const DashboardPreview = () => {
                                     zIndex: 1000,
                                     background: 'rgba(15, 23, 42, 0.8)',
                                     backdropFilter: 'blur(10px)',
-                                    borderRadius: '12px',
+                                    borderRadius: 0,
                                     p: 1.5,
                                     border: '1px solid rgba(255,255,255,0.1)',
                                     display: 'flex',
@@ -455,20 +472,13 @@ const DashboardPreview = () => {
                                                             color={complaint.category === 'supply' ? 'error' : 'primary'}
                                                             sx={{ mb: 1, fontSize: '10px', height: 20 }}
                                                         />
-                                                        <Typography variant="subtitle2" fontWeight={800}>{complaint.ward || resolveWard(complaint.location)}</Typography>
+                                                        <LocationResolver
+                                                            locationString={complaint.location}
+                                                            district={complaint.district}
+                                                        />
                                                         <Typography variant="caption" display="block" sx={{ mb: 1, opacity: 0.8 }}>
                                                             {new Date(complaint.created_at).toLocaleDateString()}
                                                         </Typography>
-                                                        <Button
-                                                            variant="contained"
-                                                            size="small"
-                                                            color="success"
-                                                            fullWidth
-                                                            onClick={() => handleResolve(complaint.id)}
-                                                            sx={{ fontSize: '10px' }}
-                                                        >
-                                                            Mark Resolved
-                                                        </Button>
                                                     </Box>
                                                 </Popup>
                                             </Marker>
@@ -481,80 +491,11 @@ const DashboardPreview = () => {
 
                     {/* RIGHT COLUMN - COMMAND FEED */}
                     <Grid size={{ xs: 12, lg: 4 }}>
-                        <Stack spacing={3} sx={{ width: '100%', height: '650px' }}> {/* MATCH MAP HEIGHT */}
-
-                            {/* SYSTEM STATUS PANEL */}
-                            <Paper sx={{
-                                p: 0,
-                                borderRadius: 3,
-                                overflow: 'hidden',
-                                bgcolor: theme.palette.mode === 'dark' ? '#0f172a' : '#1e293b', // Deep Navy
-                                color: 'white',
-                                border: '1px solid rgba(255,255,255,0.1)',
-                                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.2)',
-                                flexShrink: 0
-                            }}>
-                                <Box sx={{
-                                    p: 2,
-                                    borderBottom: '1px solid rgba(255,255,255,0.1)',
-                                    bgcolor: 'rgba(0,0,0,0.2)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between'
-                                }}>
-                                    <Box display="flex" alignItems="center" gap={1.5}>
-                                        <BrainCircuit size={18} color="#38bdf8" />
-                                        <Typography variant="subtitle2" fontWeight={700} letterSpacing="0.05em">
-                                            INTELLIGENCE
-                                        </Typography>
-                                    </Box>
-                                    <Chip label="ONLINE" size="small" sx={{
-                                        height: 20,
-                                        bgcolor: 'rgba(34, 197, 94, 0.2)',
-                                        color: '#4ade80',
-                                        fontSize: '0.65rem',
-                                        fontWeight: 800
-                                    }}
-                                    />
-                                </Box>
-
-                                <Box sx={{ p: 2.5 }}>
-                                    {patterns.length > 0 ? (
-                                        <>
-                                            <Box display="flex" alignItems="baseline" gap={1} mb={1}>
-                                                <Typography variant="h6" fontWeight={700} color="#38bdf8">
-                                                    {patterns[0].issue.toUpperCase()}
-                                                </Typography>
-                                            </Box>
-                                            <Typography variant="body2" sx={{ opacity: 0.8, mb: 2, lineHeight: 1.5, fontFamily: 'monospace' }}>
-                                                Analysis of <strong>{patterns[0].count} reports</strong> in <strong>{patterns[0].area}</strong> indicates high severity.
-                                            </Typography>
-                                            <Button
-                                                variant="outlined"
-                                                size="small"
-                                                fullWidth
-                                                endIcon={<ArrowRight size={16} />}
-                                                onClick={() => navigate('/patterns')}
-                                                sx={{
-                                                    borderColor: 'rgba(56, 189, 248, 0.5)',
-                                                    color: '#38bdf8',
-                                                    '&:hover': { borderColor: '#38bdf8', bgcolor: 'rgba(56, 189, 248, 0.1)' }
-                                                }}
-                                            >
-                                                View Analysis
-                                            </Button>
-                                        </>
-                                    ) : (
-                                        <Box display="flex" alignItems="center" gap={2} sx={{ opacity: 0.7 }}>
-                                            <Typography variant="body2" fontFamily="monospace">NO CRITICAL ANOMALIES</Typography>
-                                        </Box>
-                                    )}
-                                </Box>
-                            </Paper>
-
+                        <Stack spacing={3} sx={{ width: '100%', height: '650px' }}>
+                            {/* SYSTEM STATUS PANEL REMOVED */}
                             {/* LIVE INCIDENT LOG */}
                             <Paper sx={{
-                                borderRadius: 3,
+                                borderRadius: 0,
                                 flex: 1,
                                 display: 'flex',
                                 flexDirection: 'column',
@@ -582,13 +523,11 @@ const DashboardPreview = () => {
                                 <Box sx={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', flex: 1 }}>
                                     {complaints.map((complaint, index) => (
                                         <Box key={complaint.id}
-                                            onClick={() => setSelectedComplaint(complaint)}
+                                            // Disabled Click
                                             sx={{
                                                 p: 2,
                                                 borderBottom: `1px solid ${theme.palette.divider}`,
-                                                cursor: 'pointer',
-                                                transition: 'all 0.2s',
-                                                '&:hover': { bgcolor: theme.palette.action.selected, pl: 2.5 },
+                                                // Removed cursor pointer and hover effect
                                                 display: 'flex',
                                                 gap: 2
                                             }}
@@ -616,9 +555,11 @@ const DashboardPreview = () => {
                                                 </Typography>
                                                 <Box display="flex" alignItems="center" gap={0.5}>
                                                     <MapIcon size={12} style={{ opacity: 0.5 }} />
-                                                    <Typography variant="caption" color="text.secondary">
-                                                        {complaint.ward || resolveWard(complaint.location)}
-                                                    </Typography>
+                                                    <LocationResolver
+                                                        locationString={complaint.location}
+                                                        district={complaint.district}
+                                                        variant="caption"
+                                                    />
                                                 </Box>
                                             </Box>
                                         </Box>
@@ -632,7 +573,7 @@ const DashboardPreview = () => {
                     <Grid size={{ xs: 12, md: 6 }}>
                         <Paper sx={{
                             p: 3,
-                            borderRadius: 3,
+                            borderRadius: 0,
                             height: '400px',
                             bgcolor: theme.palette.mode === 'dark' ? '#1e293b' : '#ffffff',
                             border: `1px solid ${theme.palette.divider}`,
@@ -667,7 +608,7 @@ const DashboardPreview = () => {
                     <Grid size={{ xs: 12, md: 6 }}>
                         <Paper sx={{
                             p: 3,
-                            borderRadius: 3,
+                            borderRadius: 0,
                             height: '400px',
                             bgcolor: theme.palette.mode === 'dark' ? '#1e293b' : '#ffffff',
                             border: `1px solid ${theme.palette.divider}`,
@@ -675,7 +616,7 @@ const DashboardPreview = () => {
                         }}>
                             <Typography variant="h6" fontWeight={800} gutterBottom display="flex" alignItems="center" gap={1.5}>
                                 <Box sx={{ width: 4, height: 20, bgcolor: 'secondary.main', borderRadius: 2 }} />
-                                Cluster Density
+                                Issue Hotspots
                             </Typography>
                             <ResponsiveContainer width="100%" height="90%">
                                 <BarChart data={clusterData.slice(0, 5)} layout="vertical" margin={{ left: 10 }}>
@@ -683,7 +624,7 @@ const DashboardPreview = () => {
                                     <XAxis type="number" hide />
                                     <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 11, fontWeight: 600 }} axisLine={false} tickLine={false} />
                                     <RechartsTooltip cursor={{ fill: theme.palette.action.hover }} />
-                                    <Bar dataKey="count" fill="#8884d8" radius={[0, 4, 4, 0]} barSize={20}>
+                                    <Bar dataKey="count" fill="#8884d8" radius={[0, 0, 0, 0]} barSize={20}>
                                         {clusterData.map((entry, index) => (
                                             <Cell key={`cell-${index}`} fill={index === 0 ? '#ef4444' : '#6366f1'} />
                                         ))}
@@ -700,7 +641,7 @@ const DashboardPreview = () => {
                     onClose={() => setSelectedComplaint(null)}
                     maxWidth="sm"
                     fullWidth
-                    PaperProps={{ sx: { borderRadius: 6 } }}
+                    PaperProps={{ sx: { borderRadius: 0 } }}
                 >
                     {selectedComplaint && (
                         <>
@@ -719,7 +660,7 @@ const DashboardPreview = () => {
                             </DialogTitle>
                             <DialogContent sx={{ px: 3, pt: 2 }}>
                                 <Stack spacing={3}>
-                                    <Paper elevation={0} sx={{ p: 2, bgcolor: theme.palette.action.hover, borderRadius: 3 }}>
+                                    <Paper elevation={0} sx={{ p: 2, bgcolor: theme.palette.action.hover, borderRadius: 0 }}>
                                         <Typography variant="body1" sx={{ fontWeight: 500 }}>
                                             {selectedComplaint.description}
                                         </Typography>
@@ -730,17 +671,7 @@ const DashboardPreview = () => {
                                             <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ mb: 1, display: 'block' }}>JURISDICTION</Typography>
                                             <Stack direction="row" spacing={1} flexWrap="wrap">
                                                 <Chip
-                                                    label={`Ward: ${selectedComplaint.ward || "Unknown"}`}
-                                                    variant="outlined"
-                                                    sx={{
-                                                        borderColor: '#a855f7',
-                                                        color: '#d8b4fe',
-                                                        bgcolor: 'rgba(168, 85, 247, 0.1)',
-                                                        fontWeight: 600
-                                                    }}
-                                                />
-                                                <Chip
-                                                    label={`Constituency: ${selectedComplaint.constituency || selectedComplaint.district || "Pune District"}`}
+                                                    label={`Area: ${selectedComplaint.district || selectedComplaint.constituency || "Unknown Area"}`}
                                                     variant="outlined"
                                                     sx={{
                                                         borderColor: '#3b82f6',
@@ -785,23 +716,12 @@ const DashboardPreview = () => {
                             </DialogContent>
                             <DialogActions sx={{ p: 3 }}>
                                 <Button onClick={() => setSelectedComplaint(null)} color="inherit" sx={{ borderRadius: 2 }}>Dismiss</Button>
-                                {selectedComplaint.status !== 'resolved' && (
-                                    <Button
-                                        variant="contained"
-                                        color="success"
-                                        startIcon={<CheckCircle2 size={18} />}
-                                        onClick={() => handleResolve(selectedComplaint.id)}
-                                        sx={{ borderRadius: 2, px: 3, fontWeight: 700 }}
-                                    >
-                                        Mark Resolved
-                                    </Button>
-                                )}
                             </DialogActions>
                         </>
                     )}
                 </Dialog>
-            </Container>
-        </Box>
+            </Container >
+        </Box >
     );
 };
 

@@ -10,7 +10,7 @@ const Footer = () => {
     const handleSubscribe = (e) => {
         e.preventDefault();
         if (email) {
-            alert(`Highly appreciated! ${email} has been subscribed to our intelligence grid.`);
+            alert(`Highly appreciated! ${email} has been subscribed to our information network.`);
             setEmail('');
         }
     };
@@ -31,7 +31,7 @@ const Footer = () => {
                         </Box>
                         <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 300 }}>
                             Aggregating urban water data for a smarter, more resilient future.
-                            Civic intelligence platform for sustainable management.
+                            Civic information platform for sustainable management.
                         </Typography>
                         <Box sx={{ mt: 3, display: 'flex', gap: 1 }}>
                             {[Twitter, Github, Linkedin, Mail].map((Icon, i) => (
@@ -108,7 +108,7 @@ const Footer = () => {
                         © 2025 UIIS | Urban Water Intelligence System.
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                        Action-Oriented Intelligence for Water Resilience
+                        Data-Driven Insights for Water Resilience
                     </Typography>
                 </Box>
             </Container>

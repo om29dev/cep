@@ -49,7 +49,7 @@ const Hero = () => {
                                     display: 'block'
                                 }}
                             >
-                                URBAN WATER INTELLIGENCE SYSTEM
+                                URBAN WATER INFORMATION SYSTEM
                             </Typography>
                             <Typography
                                 variant="h1"
@@ -62,7 +62,7 @@ const Hero = () => {
                                 }}
                             >
                                 Resilience Through Clean <br />
-                                <span style={{ color: '#00D2FF' }}>Water Intelligence</span>
+                                <span style={{ color: '#00D2FF' }}>Water Resilience Data</span>
                             </Typography>
                             <Typography
                                 variant="h6"

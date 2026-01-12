@@ -7,10 +7,12 @@ import { useNavigate, Link as RouterLink } from 'react-router-dom';
 const Register = () => {
     const [formData, setFormData] = useState({
         username: '',
+        fullName: '', // Added Full Name
         email: '',
         password: '',
         role: 'citizen'
     });
+
     const [otp, setOtp] = useState('');
     const [otpSent, setOtpSent] = useState(false);
     const [otpVerified, setOtpVerified] = useState(false);
@@ -63,6 +65,7 @@ const Register = () => {
         try {
             const user = await register({
                 username: formData.username,
+                fullName: formData.fullName, // Passing Full Name
                 email: formData.email,
                 password: formData.password,
                 role: formData.role
@@ -79,7 +82,7 @@ const Register = () => {
     };
 
     return (
-        <Container component="main" maxWidth="xs" sx={{ py: 4 }}>
+        <Container component="main" maxWidth="xs" sx={{ py: 4 }} >
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 <Paper elevation={3} sx={{ p: 4, width: '100%', borderRadius: 4, bgcolor: 'background.paper', backdropFilter: 'blur(10px)' }}>
                     <Typography component="h1" variant="h5" sx={{ mb: 3, fontWeight: 'bold', textAlign: 'center' }}>
@@ -91,12 +94,22 @@ const Register = () => {
                             margin="normal"
                             required
                             fullWidth
+                            label="Full Name"
+                            name="fullName"
+                            autoFocus
+                            value={formData.fullName}
+                            onChange={handleChange}
+                        />
+                        <TextField
+                            margin="normal"
+                            required
+                            fullWidth
                             label="Username"
                             name="username"
-                            autoFocus
                             value={formData.username}
                             onChange={handleChange}
                         />
+                        {/* Email Field follows... */}
                         <TextField
                             margin="normal"
                             required
@@ -172,7 +185,7 @@ const Register = () => {
                     </Box>
                 </Paper>
             </Box>
-        </Container>
+        </Container >
     );
 };
 

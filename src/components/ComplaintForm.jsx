@@ -75,26 +75,26 @@ const ComplaintForm = () => {
             );
             const address = response.data.address;
 
-            // Strict District/City Extraction
-            const district = address.city_district || address.district || address.city || address.town || address.county || 'Unknown District';
+            // Strict Area/District Extraction
+            const areaName = address.city_district || address.district || address.city || address.town || address.county || 'Unknown Area';
 
-            // User requested ONLY District for now.
-            // We set the main 'location' field to the District name.
             setFormData(prev => ({
                 ...prev,
-                location: district, // Storing District Name instead of Coordinates
-                ward: '', // Cleared as per simplified requirement
+                // KEEP LOCATION AS COORDINATES FOR DATABASE
+                location: `${lat}, ${lon}`,
+                ward: '',
                 constituency: '',
-                district: district
+                // Store the name in 'district' just for UI display as "Area"
+                district: areaName
             }));
         } catch (error) {
             console.error("Jurisdiction fetch error:", error);
             setFormData(prev => ({
                 ...prev,
-                location: "Unknown District",
+                location: `${lat}, ${lon}`,
                 ward: '',
                 constituency: '',
-                district: "Unknown District"
+                district: "Unknown Area"
             }));
         }
     };
@@ -111,8 +111,11 @@ const ComplaintForm = () => {
         navigator.geolocation.getCurrentPosition(
             async (position) => {
                 const { latitude, longitude } = position.coords;
-                // We preserve tempPosition for the map UI if needed, but form gets District
+                // Save Lat/Long to DB, not text
+                const coords = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+                setFormData(prev => ({ ...prev, location: coords }));
                 setTempPosition({ lat: latitude, lng: longitude });
+
                 await fetchJurisdiction(latitude, longitude);
                 setStatus('idle');
             },
@@ -125,6 +128,8 @@ const ComplaintForm = () => {
 
     const handleConfirmMapLocation = async () => {
         if (tempPosition) {
+            const coords = `${tempPosition.lat.toFixed(6)}, ${tempPosition.lng.toFixed(6)}`;
+            setFormData(prev => ({ ...prev, location: coords }));
             await fetchJurisdiction(tempPosition.lat, tempPosition.lng);
         }
         setMapOpen(false);
@@ -305,10 +310,10 @@ const ComplaintForm = () => {
                                             </Box>
                                             <Box>
                                                 <Typography variant="subtitle1" fontWeight={800} sx={{ color: '#00D2FF' }}>
-                                                    AI & BLOCKCHAIN ACTIVE
+                                                    AUTOMATION & BLOCKCHAIN ACTIVE
                                                 </Typography>
                                                 <Typography variant="body2" color="text.secondary">
-                                                    Our secure AI will automatically analyze your description to categorize the issue. Records are hashed and immutable.
+                                                    Our secure system will automatically analyze your description to categorize the issue. Records are hashed and immutable.
                                                 </Typography>
                                             </Box>
                                         </Paper>
@@ -344,19 +349,9 @@ const ComplaintForm = () => {
                                                 >
                                                     <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
                                                         <Chip
-                                                            label={`District: ${formData.district || 'Detecting...'}`}
+                                                            label={`Area: ${formData.district || 'Detecting...'}`}
                                                             size="small"
                                                             sx={{ borderRadius: '6px', background: 'rgba(0, 210, 255, 0.1)', color: '#00D2FF', border: '1px solid rgba(0, 210, 255, 0.2)' }}
-                                                        />
-                                                        <Chip
-                                                            label={`Ward: ${formData.ward || 'Detecting...'}`}
-                                                            size="small"
-                                                            sx={{ borderRadius: '6px', background: 'rgba(157, 80, 187, 0.1)', color: '#9D50BB', border: '1px solid rgba(157, 80, 187, 0.2)' }}
-                                                        />
-                                                        <Chip
-                                                            label={`Constituency: ${formData.constituency || 'Detecting...'}`}
-                                                            size="small"
-                                                            sx={{ borderRadius: '6px', background: 'rgba(74, 172, 254, 0.1)', color: '#4facfe', border: '1px solid rgba(74, 172, 254, 0.2)' }}
                                                         />
                                                     </Stack>
                                                     <Typography variant="caption" sx={{ mt: 1.5, display: 'block', color: '#4caf50', fontWeight: 600 }}>
@@ -382,7 +377,7 @@ const ComplaintForm = () => {
                                             label="Incident Description"
                                             value={formData.description}
                                             onChange={(e) => handleInputChange('description', e.target.value)}
-                                            placeholder="Describe the issue in detail (e.g., 'No water supply in Ward 4 for 3 days'). Our AI will categorize this automatically."
+                                            placeholder="Describe the issue in detail (e.g., 'No water supply in Ward 4 for 3 days'). The system will categorize this automatically."
                                             required
                                             sx={inputStyles}
                                         />
