@@ -1,0 +1,6 @@
+sentence-transformers
+scikit-learn
+psycopg2-binary
+web3
+python-dotenv
+pandas

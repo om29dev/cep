@@ -13,7 +13,7 @@ import {
     useTheme,
     Avatar
 } from '@mui/material';
-import { Menu as MenuIcon, Droplets, Sun, Moon, LogOut, ListChecks, LayoutDashboard, PlusCircle, Shield } from 'lucide-react';
+import { Menu as MenuIcon, Droplets, Sun, Moon, LogOut, ListChecks, LayoutDashboard, PlusCircle, Shield, BrainCircuit } from 'lucide-react';
 import { ColorModeContext } from '../ColorModeContext';
 import { useAuth } from '../AuthContext';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
@@ -83,15 +83,35 @@ const Navbar = () => {
                                     )}
 
                                     {hasRole('officer') && (
-                                        <Button
-                                            component={RouterLink}
-                                            to="/dashboard"
-                                            startIcon={<LayoutDashboard size={18} />}
-                                            color="inherit"
-                                            sx={{ textTransform: 'none', fontWeight: 600 }}
-                                        >
-                                            Officer Dashboard
-                                        </Button>
+                                        <>
+                                            <Button
+                                                component={RouterLink}
+                                                to="/dashboard"
+                                                startIcon={<LayoutDashboard size={18} />}
+                                                color="inherit"
+                                                sx={{ textTransform: 'none', fontWeight: 600 }}
+                                            >
+                                                Officer Dashboard
+                                            </Button>
+                                            <Button
+                                                component={RouterLink}
+                                                to="/officer-complaints"
+                                                startIcon={<ListChecks size={18} />}
+                                                color="inherit"
+                                                sx={{ textTransform: 'none', fontWeight: 600 }}
+                                            >
+                                                Issues List
+                                            </Button>
+                                            <Button
+                                                component={RouterLink}
+                                                to="/patterns"
+                                                startIcon={<BrainCircuit size={18} />}
+                                                color="inherit"
+                                                sx={{ textTransform: 'none', fontWeight: 600 }}
+                                            >
+                                                AI Patterns
+                                            </Button>
+                                        </>
                                     )}
 
                                     {hasRole('citizen') && (
@@ -179,11 +199,23 @@ const Navbar = () => {
                                 )}
 
                                 {hasRole('officer') && (
-                                    <ListItem disablePadding>
-                                        <Button fullWidth component={RouterLink} to="/dashboard" onClick={handleDrawerToggle} startIcon={<LayoutDashboard size={18} />} sx={{ justifyContent: 'flex-start', px: 2, py: 1.5 }}>
-                                            Officer Dashboard
-                                        </Button>
-                                    </ListItem>
+                                    <>
+                                        <ListItem disablePadding>
+                                            <Button fullWidth component={RouterLink} to="/dashboard" onClick={handleDrawerToggle} startIcon={<LayoutDashboard size={18} />} sx={{ justifyContent: 'flex-start', px: 2, py: 1.5 }}>
+                                                Officer Dashboard
+                                            </Button>
+                                        </ListItem>
+                                        <ListItem disablePadding>
+                                            <Button fullWidth component={RouterLink} to="/officer-complaints" onClick={handleDrawerToggle} startIcon={<ListChecks size={18} />} sx={{ justifyContent: 'flex-start', px: 2, py: 1.5 }}>
+                                                Issues List
+                                            </Button>
+                                        </ListItem>
+                                        <ListItem disablePadding>
+                                            <Button fullWidth component={RouterLink} to="/patterns" onClick={handleDrawerToggle} startIcon={<BrainCircuit size={18} />} sx={{ justifyContent: 'flex-start', px: 2, py: 1.5 }}>
+                                                AI Patterns
+                                            </Button>
+                                        </ListItem>
+                                    </>
                                 )}
 
                                 {hasRole('citizen') && (

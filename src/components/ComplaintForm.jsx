@@ -17,7 +17,8 @@ import {
     DialogContent,
     DialogActions,
     Tooltip,
-    useTheme
+    useTheme,
+    Chip
 } from '@mui/material';
 import { Send, MapPin, Camera, X, CheckCircle2, Map as MapIcon, ImagePlus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -49,10 +50,12 @@ const LocationMarker = ({ position, setPosition }) => {
 const ComplaintForm = () => {
     const theme = useTheme();
     const [formData, setFormData] = useState({
-        category: '',
         location: '',
         description: '',
-        images: []
+        images: [],
+        ward: '',
+        constituency: '',
+        district: ''
     });
     const [status, setStatus] = useState('idle'); // idle, locating, submitting, success
     const [locationError, setLocationError] = useState(null);
@@ -62,6 +65,38 @@ const ComplaintForm = () => {
 
     const handleInputChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
+    };
+
+    const fetchJurisdiction = async (lat, lon) => {
+        try {
+            const response = await axios.get(
+                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`,
+                { withCredentials: false }
+            );
+            const address = response.data.address;
+
+            // Strict District/City Extraction
+            const district = address.city_district || address.district || address.city || address.town || address.county || 'Unknown District';
+
+            // User requested ONLY District for now.
+            // We set the main 'location' field to the District name.
+            setFormData(prev => ({
+                ...prev,
+                location: district, // Storing District Name instead of Coordinates
+                ward: '', // Cleared as per simplified requirement
+                constituency: '',
+                district: district
+            }));
+        } catch (error) {
+            console.error("Jurisdiction fetch error:", error);
+            setFormData(prev => ({
+                ...prev,
+                location: "Unknown District",
+                ward: '',
+                constituency: '',
+                district: "Unknown District"
+            }));
+        }
     };
 
     const handleGetLocation = () => {
@@ -74,11 +109,11 @@ const ComplaintForm = () => {
         }
 
         navigator.geolocation.getCurrentPosition(
-            (position) => {
+            async (position) => {
                 const { latitude, longitude } = position.coords;
-                const coords = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
-                setFormData(prev => ({ ...prev, location: coords }));
+                // We preserve tempPosition for the map UI if needed, but form gets District
                 setTempPosition({ lat: latitude, lng: longitude });
+                await fetchJurisdiction(latitude, longitude);
                 setStatus('idle');
             },
             (error) => {
@@ -88,10 +123,9 @@ const ComplaintForm = () => {
         );
     };
 
-    const handleConfirmMapLocation = () => {
+    const handleConfirmMapLocation = async () => {
         if (tempPosition) {
-            const coords = `${tempPosition.lat.toFixed(6)}, ${tempPosition.lng.toFixed(6)}`;
-            setFormData(prev => ({ ...prev, location: coords }));
+            await fetchJurisdiction(tempPosition.lat, tempPosition.lng);
         }
         setMapOpen(false);
     };
@@ -127,9 +161,11 @@ const ComplaintForm = () => {
 
         try {
             const data = new FormData();
-            data.append('category', formData.category);
             data.append('location', formData.location);
             data.append('description', formData.description);
+            data.append('ward', formData.ward);
+            data.append('constituency', formData.constituency);
+            data.append('district', formData.district);
             formData.images.forEach(img => {
                 data.append('images', img.file);
             });
@@ -142,7 +178,14 @@ const ComplaintForm = () => {
 
             if (response.status === 201) {
                 setStatus('success');
-                setFormData({ category: '', location: '', description: '', images: [] });
+                setFormData({
+                    location: '',
+                    description: '',
+                    images: [],
+                    ward: '',
+                    constituency: '',
+                    district: ''
+                });
                 setTempPosition(null);
             } else {
                 setStatus('idle');
@@ -208,7 +251,7 @@ const ComplaintForm = () => {
                         Log A Crisis <span style={{ color: '#00D2FF' }}>Report</span>
                     </Typography>
                     <Typography variant="h6" color="text.secondary">
-                        Immutable water intelligence for rapid municipal response.
+                        Immutable intelligence for rapid municipal response.
                     </Typography>
                 </Box>
 
@@ -230,22 +273,45 @@ const ComplaintForm = () => {
                         ) : (
                             <form onSubmit={handleSubmit}>
                                 <Grid container spacing={4}>
-                                    {/* Row 1: Category */}
+                                    {/* Row 1: AI Analysis Indicator (Replacing Manual Category) */}
                                     <Grid size={{ xs: 12 }}>
-                                        <TextField
-                                            select
-                                            fullWidth
-                                            label="Issue Category"
-                                            value={formData.category}
-                                            onChange={(e) => handleInputChange('category', e.target.value)}
-                                            required
-                                            sx={inputStyles}
+                                        <Paper
+                                            elevation={0}
+                                            sx={{
+                                                p: 3,
+                                                borderRadius: 3,
+                                                background: 'rgba(0, 210, 255, 0.05)',
+                                                border: '1px solid rgba(0, 210, 255, 0.2)',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 2
+                                            }}
                                         >
-                                            <MenuItem value="supply">Water Supply Issues</MenuItem>
-                                            <MenuItem value="quality">Water Quality Concerns</MenuItem>
-                                            <MenuItem value="infra">Infrastructure & Maintenance</MenuItem>
-                                            <MenuItem value="drainage">Drainage & Overflow</MenuItem>
-                                        </TextField>
+                                            <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                                                <CircularProgress
+                                                    variant="determinate"
+                                                    value={100}
+                                                    size={40}
+                                                    thickness={4}
+                                                    sx={{ color: 'rgba(0, 210, 255, 0.2)' }}
+                                                />
+                                                <CircularProgress
+                                                    variant="indeterminate"
+                                                    disableShrink
+                                                    size={40}
+                                                    thickness={4}
+                                                    sx={{ color: '#00D2FF', position: 'absolute', left: 0, animationDuration: '3s' }}
+                                                />
+                                            </Box>
+                                            <Box>
+                                                <Typography variant="subtitle1" fontWeight={800} sx={{ color: '#00D2FF' }}>
+                                                    AI & BLOCKCHAIN ACTIVE
+                                                </Typography>
+                                                <Typography variant="body2" color="text.secondary">
+                                                    Our secure AI will automatically analyze your description to categorize the issue. Records are hashed and immutable.
+                                                </Typography>
+                                            </Box>
+                                        </Paper>
                                     </Grid>
 
                                     {/* Row 2: Location and Photo Actions */}
@@ -268,12 +334,38 @@ const ComplaintForm = () => {
                                             </Button>
                                         </Stack>
 
-                                        {/* Silent Coordinate Display */}
-                                        {formData.location && (
-                                            <Typography variant="caption" sx={{ mt: 2, display: 'block', color: '#4caf50' }}>
-                                                Location Locked: {formData.location}
-                                            </Typography>
-                                        )}
+                                        {/* Jurisdiction Dashboard Chips */}
+                                        <AnimatePresence>
+                                            {formData.location && (
+                                                <motion.div
+                                                    initial={{ opacity: 0, y: 10 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    style={{ marginTop: 16 }}
+                                                >
+                                                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+                                                        <Chip
+                                                            label={`District: ${formData.district || 'Detecting...'}`}
+                                                            size="small"
+                                                            sx={{ borderRadius: '6px', background: 'rgba(0, 210, 255, 0.1)', color: '#00D2FF', border: '1px solid rgba(0, 210, 255, 0.2)' }}
+                                                        />
+                                                        <Chip
+                                                            label={`Ward: ${formData.ward || 'Detecting...'}`}
+                                                            size="small"
+                                                            sx={{ borderRadius: '6px', background: 'rgba(157, 80, 187, 0.1)', color: '#9D50BB', border: '1px solid rgba(157, 80, 187, 0.2)' }}
+                                                        />
+                                                        <Chip
+                                                            label={`Constituency: ${formData.constituency || 'Detecting...'}`}
+                                                            size="small"
+                                                            sx={{ borderRadius: '6px', background: 'rgba(74, 172, 254, 0.1)', color: '#4facfe', border: '1px solid rgba(74, 172, 254, 0.2)' }}
+                                                        />
+                                                    </Stack>
+                                                    <Typography variant="caption" sx={{ mt: 1.5, display: 'block', color: '#4caf50', fontWeight: 600 }}>
+                                                        <CheckCircle2 size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                                                        GPS LOCK: {formData.location}
+                                                    </Typography>
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
                                         {locationError && (
                                             <Typography variant="caption" sx={{ mt: 1, display: 'block', color: '#ff4d4d' }}>
                                                 {locationError}
@@ -287,10 +379,10 @@ const ComplaintForm = () => {
                                             fullWidth
                                             multiline
                                             rows={4}
-                                            label="Description"
+                                            label="Incident Description"
                                             value={formData.description}
                                             onChange={(e) => handleInputChange('description', e.target.value)}
-                                            placeholder="Details of the issue..."
+                                            placeholder="Describe the issue in detail (e.g., 'No water supply in Ward 4 for 3 days'). Our AI will categorize this automatically."
                                             required
                                             sx={inputStyles}
                                         />
@@ -334,7 +426,7 @@ const ComplaintForm = () => {
                                                 fontSize: '1.1rem'
                                             }}
                                         >
-                                            {status === 'submitting' ? 'VERIFYING DATA...' : 'SUBMIT INTELLIGENCE REPORT'}
+                                            {status === 'submitting' ? 'HASHING & SUBMITTING...' : 'SECURELY SUBMIT REPORT'}
                                         </Button>
                                     </Grid>
                                 </Grid>
@@ -365,7 +457,7 @@ const ComplaintForm = () => {
             </Dialog>
 
             <input type="file" ref={fileInputRef} hidden accept="image/*" multiple onChange={handleImageUpload} />
-        </Box>
+        </Box >
     );
 };
 
