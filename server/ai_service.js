@@ -26,8 +26,16 @@ async function analyzeComplaint(description) {
                 "category": "One of: No Water Supply, Water Leakage, Contaminated Water, Low Water Pressure, Drainage & Sewage, Illegal Connection, Non-Water Related",
                 "urgency": "One of: Low, Medium, High, Emergency",
                 "summary": "A concise 1-sentence summary of the issue.",
-                "sentiment": "One of: Frustrated, Neutral, Appreciative, Angry"
+                "sentiment": "One of: Frustrated, Neutral, Appreciative, Angry",
+                "is_spam": true/false,
+                "spam_reason": "If spam, explain why (e.g. Gibberish, Irrelevant, Abusive, Test Data). Otherwise null."
             }
+
+            STRICTLY MARK AS SPAM IF:
+            1. The input is random gibberish (e.g., "sdfghj", "123123").
+            2. It contains absolutely no meaningful information.
+            3. It is clearly test data (e.g., "test test test").
+            4. It is abusive or offensive without reporting a valid issue.
         `;
 
         const result = await model.generateContent(prompt);

@@ -338,6 +338,10 @@ app.post('/api/complaints', verifyToken, checkRole(['citizen']), upload.array('i
         // Fallback to heuristic if AI fails or key is missing
         const category = aiAnalysis?.category || predictCategory(description);
 
+        if (aiAnalysis?.is_spam) {
+            return res.status(400).json({ error: `Submission Rejected: The system detected this as invalid or spam (${aiAnalysis.spam_reason || "Nonsense detected"}). Please provide a valid description.` });
+        }
+
         if (category === 'Non-Water Related') {
             return res.status(400).json({ error: 'This system only supports water-related issues. Please report other municipal problems (roads, electricity, etc.) to the appropriate department.' });
         }
