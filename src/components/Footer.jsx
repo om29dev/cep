@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import axios from 'axios';
 import { Box, Container, Typography, Grid, Link, IconButton, Divider, Button, InputBase, useTheme } from '@mui/material';
 import { Droplets, Twitter, Github, Linkedin, Mail } from 'lucide-react';
 
@@ -7,11 +8,17 @@ const Footer = () => {
     const isDarkMode = theme.palette.mode === 'dark';
     const [email, setEmail] = useState('');
 
-    const handleSubscribe = (e) => {
+    const handleSubscribe = async (e) => {
         e.preventDefault();
-        if (email) {
+        if (!email) return;
+
+        try {
+            await axios.post('/api/subscribe', { email });
             alert(`Highly appreciated! ${email} has been subscribed to our information network.`);
             setEmail('');
+        } catch (error) {
+            console.error(error);
+            alert('Failed to subscribe. Please try again later.');
         }
     };
 

@@ -10,7 +10,7 @@ import { ColorModeContext } from './ColorModeContext'
 import { AuthProvider } from './AuthContext'
 
 const Root = () => {
-  const [mode, setMode] = useState('dark');
+  const [mode, setMode] = useState('light');
 
   const colorMode = useMemo(() => ({
     toggleColorMode: () => {

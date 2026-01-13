@@ -667,11 +667,40 @@ app.post('/api/blockchain/patterns/generate', verifyToken, checkRole(['officer',
             patterns: result.patterns
         });
     } catch (err) {
-        console.error('Pattern generation error:', err);
         res.status(500).json({ error: 'Failed to generate pattern proofs' });
     }
 });
 
-app.listen(port, () => {
-    console.log(`Server running on port ${port} `);
+app.post('/api/subscribe', async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ error: 'Email is required' });
+
+        const mailOptions = {
+            from: process.env.EMAIL_USER,
+            to: email,
+            subject: 'Welcome to UIIS Impact Reports',
+            text: `You have successfully subscribed to the Urban Water Intelligence System impact reports. We will keep you updated on the latest urban resilience insights.`,
+            html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+                    <h2 style="color: #00D2FF;">Welcome to UIIS Network</h2>
+                    <p>You have successfully subscribed to the <strong>Urban Water Intelligence System</strong> mailing list.</p>
+                    <p>We are committed to providing you with data-driven insights for a smarter, more resilient future.</p>
+                    <p>Expect monthly updates on urban impact reports and platform enhancements.</p>
+                    <br/>
+                    <p style="font-size: 12px; color: #666;">If you did not request this subscription, please ignore this email.</p>
+                </div>
+            `
+        };
+
+        await transporter.sendMail(mailOptions);
+        console.log(`[EMAIL SERVICE] Subscription confirmed for ${email}`);
+        res.json({ message: 'Subscription successful' });
+    } catch (err) {
+        console.error('Subscription error:', err);
+        res.status(500).json({ error: 'Failed to subscribe' });
+    }
 });
+
+const PORT = 5000;
+app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));

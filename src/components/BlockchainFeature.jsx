@@ -96,7 +96,7 @@ const BlockchainFeature = () => {
                                         <CheckCircle size={12} /> {stats.isValid ? "VERIFIED CHAIN" : "CHAIN DISCREPANCY"}
                                     </Typography>
                                     <Box sx={{ mt: 2, textAlign: 'center' }}>
-                                        <Typography variant="body2" color="text.secondary">{stats.totalRecords} Secure Records Stored</Typography>
+
                                         <Typography variant="caption" display="block">Layer: Cryptographic Proof-of-Trust</Typography>
                                     </Box>
                                 </Paper>
