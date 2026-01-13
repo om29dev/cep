@@ -30,9 +30,11 @@ import {
     Eye,
     Search,
     MapPin,
-    Filter
+    Filter,
+    Download // Import Download icon
 } from 'lucide-react';
 
+// ... (LocationResolver component remains unchanged)
 // Internal component to handle reverse geocoding
 const LocationResolver = ({ locationString, variant = "body2", showSkeleton = true }) => {
     const [address, setAddress] = useState(null);
@@ -174,6 +176,34 @@ const OfficerComplaints = () => {
         } catch (e) { return []; }
     };
 
+    const handleExport = () => {
+        if (!filteredComplaints.length) {
+            alert("No data to export");
+            return;
+        }
+
+        const headers = ["ID", "Category", "Description", "Location", "District", "Status", "Reported At"];
+        const rows = filteredComplaints.map(c => [
+            c.id,
+            `"${c.category}"`, // Quote strings to handle commas
+            `"${c.description.replace(/"/g, '""')}"`, // Escape quotes
+            `"${c.location}"`,
+            `"${c.district || ''}"`,
+            c.status,
+            new Date(c.created_at).toLocaleString()
+        ]);
+
+        const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `complaints_registry_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     const columns = [
         { field: 'id', headerName: 'ID', width: 70 },
         {
@@ -271,20 +301,35 @@ const OfficerComplaints = () => {
                             Issue Registry
                         </Typography>
                     </Box>
-                    <TextField
-                        placeholder="Search complaints..."
-                        variant="outlined"
-                        size="small"
-                        onChange={(e) => setSearchText(e.target.value)}
-                        InputProps={{
-                            startAdornment: (
-                                <InputAdornment position="start">
-                                    <Search size={20} />
-                                </InputAdornment>
-                            ),
-                            sx: { borderRadius: 3, bgcolor: theme.palette.background.paper }
-                        }}
-                    />
+                    <Stack direction="row" spacing={2}>
+                        <TextField
+                            placeholder="Search complaints..."
+                            variant="outlined"
+                            size="small"
+                            onChange={(e) => setSearchText(e.target.value)}
+                            InputProps={{
+                                startAdornment: (
+                                    <InputAdornment position="start">
+                                        <Search size={20} />
+                                    </InputAdornment>
+                                ),
+                                sx: { borderRadius: 3, bgcolor: theme.palette.background.paper }
+                            }}
+                        />
+                        <Button
+                            variant="outlined"
+                            startIcon={<Download size={18} />}
+                            onClick={handleExport}
+                            sx={{
+                                borderRadius: 3,
+                                textTransform: 'none',
+                                fontWeight: 600,
+                                bgcolor: theme.palette.background.paper
+                            }}
+                        >
+                            Export CSV
+                        </Button>
+                    </Stack>
                 </Box>
 
                 <Paper sx={{

@@ -148,22 +148,22 @@ const LocationResolver = ({ locationString, district, variant = "subtitle2" }) =
     );
 };
 
-const StatCard = ({ title, value, icon: Icon, color, trend }) => {
+const StatCard = ({ title, value, icon: Icon, color, trend, compact }) => {
     const theme = useTheme();
     return (
         <Paper
             elevation={0}
             sx={{
-                p: 3,
-                borderRadius: 0, // Sharper corners for professional look
+                p: compact ? 2 : 3,
+                borderRadius: 0,
                 display: 'flex',
                 alignItems: 'center',
-                gap: 3,
-                minHeight: '160px',
+                gap: compact ? 2 : 3,
+                minHeight: compact ? '80px' : '160px',
                 height: '100%',
-                background: theme.palette.mode === 'dark' ? '#1e293b' : '#ffffff', // Solid Slate-900 or White
+                background: theme.palette.mode === 'dark' ? '#1e293b' : '#ffffff',
                 border: `1px solid ${theme.palette.divider}`,
-                boxShadow: '0 1px 3px rgba(0,0,0,0.12)', // Subtle shadow
+                boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
                 transition: 'all 0.2s',
                 '&:hover': {
                     borderColor: theme.palette.primary.main,
@@ -172,23 +172,23 @@ const StatCard = ({ title, value, icon: Icon, color, trend }) => {
             }}
         >
             <Box sx={{
-                p: 2,
+                p: compact ? 1.5 : 2,
                 borderRadius: 0,
-                bgcolor: `${color}10`, // Subtle tint
+                bgcolor: `${color}10`,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 border: `1px solid ${color}30`,
-                minWidth: '64px',
-                height: '64px'
+                minWidth: compact ? '48px' : '64px',
+                height: compact ? '48px' : '64px'
             }}>
-                <Icon size={32} color={color} />
+                <Icon size={compact ? 24 : 32} color={color} />
             </Box>
             <Box sx={{ flex: 1 }}>
-                <Typography variant="overline" color="text.secondary" fontWeight={600} sx={{ letterSpacing: '0.1em' }}>
+                <Typography variant="overline" color="text.secondary" fontWeight={600} sx={{ letterSpacing: '0.1em', fontSize: compact ? '0.65rem' : 'inherit' }}>
                     {title}
                 </Typography>
-                <Typography variant="h4" fontWeight={700} color="text.primary" sx={{ my: 0.5, letterSpacing: '-0.02em' }}>
+                <Typography variant={compact ? "h5" : "h4"} fontWeight={700} color="text.primary" sx={{ my: 0.5, letterSpacing: '-0.02em' }}>
                     {value}
                 </Typography>
                 {trend && (
@@ -212,6 +212,7 @@ const DashboardPreview = () => {
     const theme = useTheme();
     const navigate = useNavigate();
     const [complaints, setComplaints] = useState([]);
+    const [patterns, setPatterns] = useState([]); // Added patterns state
     const [loading, setLoading] = useState(true);
     const [selectedComplaint, setSelectedComplaint] = useState(null);
 
@@ -225,9 +226,18 @@ const DashboardPreview = () => {
         }
     };
 
+    const fetchPatterns = async () => {
+        try {
+            const response = await axios.get('/api/blockchain/patterns');
+            setPatterns(response.data);
+        } catch (err) {
+            console.error("Failed to fetch patterns:", err);
+        }
+    };
+
     const refreshData = async () => {
         setLoading(true);
-        await fetchComplaints();
+        await Promise.all([fetchComplaints(), fetchPatterns()]);
         setLoading(false);
     }
 
@@ -292,7 +302,7 @@ const DashboardPreview = () => {
             const currentPos = getPosition(current.location);
             const newCluster = {
                 id: `zone-${clusters.length + 1}`,
-                name: `Zone ${clusters.length + 1}`,
+                name: `Issue ${clusters.length + 1}`,
                 center: currentPos,
                 count: 1,
                 complaints: [current]
@@ -323,6 +333,37 @@ const DashboardPreview = () => {
         });
         return Object.keys(counts).map(key => ({ name: key, value: counts[key] }));
     }, [activeComplaints]);
+
+    // Data for Zone/District Chart
+    const districtData = useMemo(() => {
+        const counts = {};
+        activeComplaints.forEach(c => {
+            const d = c.district || 'Unmapped Zone';
+            counts[d] = (counts[d] || 0) + 1;
+        });
+        return Object.keys(counts)
+            .map(key => ({ name: key, count: counts[key] }))
+            .sort((a, b) => b.count - a.count);
+    }, [activeComplaints]);
+
+    // Data for Time Analysis (Complaints per Hour)
+    const timeData = useMemo(() => {
+        const counts = {};
+        activeComplaints.forEach(c => {
+            if (!c.created_at) return;
+            const hour = new Date(c.created_at).getHours();
+            // Format hour as "10 AM", "2 PM"
+            const label = hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`;
+            counts[label] = (counts[label] || 0) + 1;
+        });
+
+        // Ensure chronological order if possible, or just by key existence for now
+        // For simplicity, let's just map existing data. 
+        // Ideally we fill 0 for missing hours, but let's just show active hours.
+        return Object.keys(counts).map(key => ({ name: key, count: counts[key] }));
+    }, [activeComplaints]);
+
+
 
     const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
 
@@ -360,28 +401,7 @@ const DashboardPreview = () => {
                     </Stack>
                 </Box>
 
-                {/* STATS ROW */}
-                <Grid container spacing={3} sx={{ mb: 4 }}>
-                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                        <StatCard title="Total Active Issues" value={activeComplaints.length} icon={Users} color="#3b82f6" />
-                    </Grid>
 
-                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                        <StatCard title="Water Quality Alerts" value={activeComplaints.filter(c => c.category && c.category.includes('Contaminated')).length} icon={Droplets} color="#f59e0b" />
-                    </Grid>
-                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                        <StatCard title="Active Hotspots" value={clusterData.filter(c => c.count > 1).length} icon={MapIcon} color="#f59e0b" />
-                    </Grid>
-                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                        <StatCard
-                            title="AI Intelligence"
-                            value={activeComplaints.filter(c => c.ai_urgency === 'Emergency' || c.ai_urgency === 'High').length}
-                            icon={Activity}
-                            color="#ef4444"
-                            trend="High Priority Issues"
-                        />
-                    </Grid>
-                </Grid>
 
                 {/* MAIN CONTENT SPLIT */}
                 <Grid container spacing={3}>
@@ -492,8 +512,8 @@ const DashboardPreview = () => {
                                                             locationString={complaint.location}
                                                             district={complaint.district}
                                                         />
-                                                        <Typography variant="body2" sx={{ mt: 1, mb: 1, fontStyle: 'italic', color: 'text.secondary', fontSize: '0.75rem' }}>
-                                                            AI Summary: {complaint.ai_summary || complaint.description.substring(0, 50) + '...'}
+                                                        <Typography variant="body2" sx={{ mt: 1, mb: 1, color: 'text.secondary', fontSize: '0.75rem' }}>
+                                                            {complaint.description.substring(0, 80)}...
                                                         </Typography>
                                                         <Typography variant="caption" display="block" sx={{ mb: 1, opacity: 0.8 }}>
                                                             {new Date(complaint.created_at).toLocaleDateString()}
@@ -510,12 +530,12 @@ const DashboardPreview = () => {
 
                     {/* RIGHT COLUMN - COMMAND FEED */}
                     <Grid size={{ xs: 12, lg: 4 }}>
-                        <Stack spacing={3} sx={{ width: '100%', height: '650px' }}>
+                        <Stack spacing={2} sx={{ width: '100%', minHeight: '650px' }}>
                             {/* SYSTEM STATUS PANEL REMOVED */}
                             {/* LIVE INCIDENT LOG */}
                             <Paper sx={{
                                 borderRadius: 0,
-                                flex: 1,
+                                height: '400px', // Fixed height to show approx 4 items
                                 display: 'flex',
                                 flexDirection: 'column',
                                 border: `1px solid ${theme.palette.divider}`,
@@ -586,7 +606,7 @@ const DashboardPreview = () => {
                                                     </Box>
                                                 </Box>
                                                 <Typography variant="body2" fontWeight={600} sx={{ mb: 0.5, color: 'text.primary', fontSize: '0.85rem' }}>
-                                                    {complaint.ai_summary || complaint.description.substring(0, 60)}
+                                                    {complaint.description.substring(0, 100)}...
                                                 </Typography>
                                                 <Box display="flex" alignItems="center" gap={0.5}>
                                                     <MapIcon size={12} style={{ opacity: 0.5 }} />
@@ -601,6 +621,23 @@ const DashboardPreview = () => {
                                     ))}
                                 </Box>
                             </Paper>
+
+                            <Stack spacing={2}>
+                                <StatCard
+                                    title="Total Active"
+                                    value={activeComplaints.length}
+                                    icon={Users}
+                                    color="#3b82f6"
+                                    compact
+                                />
+                                <StatCard
+                                    title="Active Hotspots"
+                                    value={clusterData.filter(c => c.count > 1).length}
+                                    icon={MapIcon}
+                                    color="#f59e0b"
+                                    compact
+                                />
+                            </Stack>
                         </Stack>
                     </Grid>
 
@@ -651,7 +688,7 @@ const DashboardPreview = () => {
                         }}>
                             <Typography variant="h6" fontWeight={800} gutterBottom display="flex" alignItems="center" gap={1.5}>
                                 <Box sx={{ width: 4, height: 20, bgcolor: 'secondary.main', borderRadius: 2 }} />
-                                Issue Hotspots
+                                Major Issues
                             </Typography>
                             <ResponsiveContainer width="100%" height="90%">
                                 <BarChart data={clusterData.slice(0, 5)} layout="vertical" margin={{ left: 10 }}>
@@ -659,11 +696,91 @@ const DashboardPreview = () => {
                                     <XAxis type="number" hide />
                                     <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 11, fontWeight: 600 }} axisLine={false} tickLine={false} />
                                     <RechartsTooltip cursor={{ fill: theme.palette.action.hover }} />
-                                    <Bar dataKey="count" fill="#8884d8" radius={[0, 0, 0, 0]} barSize={20}>
+                                    <Bar
+                                        dataKey="count"
+                                        fill="#8884d8"
+                                        radius={[0, 0, 0, 0]}
+                                        barSize={20}
+                                        onClick={(data) => {
+                                            if (data && data.complaints && data.complaints.length > 0) {
+                                                setSelectedComplaint(data.complaints[0]);
+                                            }
+                                        }}
+                                        style={{ cursor: 'pointer' }}
+                                    >
                                         {clusterData.map((entry, index) => (
                                             <Cell key={`cell-${index}`} fill={index === 0 ? '#ef4444' : '#6366f1'} />
                                         ))}
                                     </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </Paper>
+                    </Grid>
+
+                    {/* ROW 3: ZONE & TIME ANALYSIS */}
+                    <Grid size={{ xs: 12, md: 8 }}>
+                        <Paper sx={{
+                            p: 3,
+                            borderRadius: 0,
+                            height: '350px',
+                            bgcolor: theme.palette.mode === 'dark' ? '#1e293b' : '#ffffff',
+                            border: `1px solid ${theme.palette.divider}`,
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+                        }}>
+                            <Typography variant="h6" fontWeight={800} gutterBottom display="flex" alignItems="center" gap={1.5}>
+                                <Box sx={{ width: 4, height: 20, bgcolor: '#10b981', borderRadius: 2 }} />
+                                Regional Zone Intensity
+                            </Typography>
+                            <ResponsiveContainer width="100%" height="85%">
+                                <BarChart data={districtData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme.palette.divider} />
+                                    <XAxis dataKey="name" stroke={theme.palette.text.secondary} tick={{ fontSize: 12, fontWeight: 600 }} />
+                                    <YAxis stroke={theme.palette.text.secondary} />
+                                    <RechartsTooltip
+                                        cursor={{ fill: theme.palette.action.hover }}
+                                        contentStyle={{
+                                            backgroundColor: theme.palette.mode === 'dark' ? '#0f172a' : '#fff',
+                                            borderColor: theme.palette.divider,
+                                            borderRadius: '8px'
+                                        }}
+                                    />
+                                    <Bar dataKey="count" fill="#10b981" radius={[4, 4, 0, 0]} barSize={50}>
+                                        {districtData.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={['#10b981', '#34d399', '#6ee7b7'][index % 3]} />
+                                        ))}
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </Paper>
+                    </Grid>
+
+                    <Grid size={{ xs: 12, md: 4 }}>
+                        <Paper sx={{
+                            p: 3,
+                            borderRadius: 0,
+                            height: '350px',
+                            bgcolor: theme.palette.mode === 'dark' ? '#1e293b' : '#ffffff',
+                            border: `1px solid ${theme.palette.divider}`,
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+                        }}>
+                            <Typography variant="h6" fontWeight={800} gutterBottom display="flex" alignItems="center" gap={1.5}>
+                                <Box sx={{ width: 4, height: 20, bgcolor: '#f43f5e', borderRadius: 2 }} />
+                                Temporal Surge
+                            </Typography>
+                            <ResponsiveContainer width="100%" height="85%">
+                                <BarChart data={timeData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme.palette.divider} />
+                                    <XAxis dataKey="name" stroke={theme.palette.text.secondary} tick={{ fontSize: 10, fontWeight: 600 }} />
+                                    <YAxis stroke={theme.palette.text.secondary} tick={{ fontSize: 10 }} />
+                                    <RechartsTooltip
+                                        cursor={{ fill: theme.palette.action.hover }}
+                                        contentStyle={{
+                                            backgroundColor: theme.palette.mode === 'dark' ? '#0f172a' : '#fff',
+                                            borderColor: theme.palette.divider,
+                                            borderRadius: '8px'
+                                        }}
+                                    />
+                                    <Bar dataKey="count" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={30} />
                                 </BarChart>
                             </ResponsiveContainer>
                         </Paper>
@@ -715,24 +832,26 @@ const DashboardPreview = () => {
                                                         fontWeight: 600
                                                     }}
                                                 />
-                                                {selectedComplaint.ai_sentiment && (
-                                                    <Chip
-                                                        label={`Tone: ${selectedComplaint.ai_sentiment}`}
-                                                        variant="outlined"
-                                                        sx={{
-                                                            borderColor: '#8b5cf6',
-                                                            color: '#c4b5fd',
-                                                            bgcolor: 'rgba(139, 92, 246, 0.1)',
-                                                            fontWeight: 600
-                                                        }}
-                                                    />
-                                                )}
                                             </Stack>
                                         </Box>
                                         <Divider orientation="vertical" flexItem />
                                         <Box flex={1}>
-                                            <Typography variant="caption" color="text.secondary" fontWeight={700}>COORDINATES</Typography>
-                                            <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>{selectedComplaint.location}</Typography>
+                                            <Typography variant="caption" color="text.secondary" fontWeight={700}>PRECISE LOCATION</Typography>
+                                            <LocationResolver
+                                                locationString={selectedComplaint.location}
+                                                district={null} // Force resolve coordinates
+                                                variant="body2"
+                                            />
+                                            <Button
+                                                variant="text"
+                                                size="small"
+                                                startIcon={<MapIcon size={14} />}
+                                                href={`https://www.google.com/maps?q=${selectedComplaint.location}`}
+                                                target="_blank"
+                                                sx={{ mt: 0.5, p: 0, minWidth: 'auto', textTransform: 'none' }}
+                                            >
+                                                Open in Geo-Sat
+                                            </Button>
                                         </Box>
                                     </Box>
 

@@ -16,10 +16,11 @@ import {
     Chip,
     Stack,
     CircularProgress,
-    InputAdornment
+    InputAdornment,
+    Grid
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
-import { UserPlus, Trash2, Shield, User, Search } from 'lucide-react';
+import { UserPlus, Trash2, Shield, User, Search, TrendingUp } from 'lucide-react';
 import { useTheme } from '@mui/material/styles';
 
 const AdminDashboard = () => {

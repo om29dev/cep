@@ -10,7 +10,7 @@ const cookieParser = require('cookie-parser');
 const crypto = require('crypto');
 const fs = require('fs');
 const nodemailer = require('nodemailer');
-const { analyzeComplaint } = require('./ai_service'); // Added AI Service
+const { analyzeComplaint, detectPattern } = require('./ai_service'); // Added AI Service
 
 dotenv.config();
 
@@ -346,7 +346,6 @@ app.post('/api/complaints', verifyToken, checkRole(['citizen']), upload.array('i
             return res.status(400).json({ error: 'This system only supports water-related issues. Please report other municipal problems (roads, electricity, etc.) to the appropriate department.' });
         }
 
-        const ai_summary = aiAnalysis?.summary || description.substring(0, 100) + '...';
         const ai_urgency = aiAnalysis?.urgency || 'Medium';
         const ai_sentiment = aiAnalysis?.sentiment || 'Neutral';
 
@@ -366,7 +365,7 @@ app.post('/api/complaints', verifyToken, checkRole(['citizen']), upload.array('i
         const startTime = Date.now();
 
         while (true) {
-            const dataToHash = `${req.user.id}${category}${location}${description}${district}${previousHash}${ai_summary}${ai_urgency}${nonce}`;
+            const dataToHash = `${req.user.id}${category}${location}${description}${district}${previousHash}${ai_urgency}${nonce}`;
             hash = crypto.createHash('sha256').update(dataToHash).digest('hex');
 
             if (hash.startsWith(difficulty)) {
@@ -379,9 +378,15 @@ app.post('/api/complaints', verifyToken, checkRole(['citizen']), upload.array('i
         console.log(`[BLOCKCHAIN] Block Mined! Nonce: ${nonce}, Time: ${timeTaken}s, Hash: ${hash}`);
 
         const result = await pool.query(
-            'INSERT INTO complaints (user_id, category, location, description, images, district, previous_hash, hash, ai_summary, ai_urgency, ai_sentiment, nonce) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *',
-            [req.user.id, category, location, description, JSON.stringify(imagePaths), district, previousHash, hash, ai_summary, ai_urgency, ai_sentiment, nonce]
+            'INSERT INTO complaints (user_id, category, location, description, images, district, previous_hash, hash, ai_urgency, ai_sentiment, nonce) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *',
+            [req.user.id, category, location, description, JSON.stringify(imagePaths), district, previousHash, hash, ai_urgency, ai_sentiment, nonce]
         );
+
+        // Auto-mine patterns after new complaint
+        // We don't await this to keep response fast, or we can await if we want to ensure it's done. 
+        // Given it's fast (PoW difficulty 3), awaiting is fine and safer for consistency.
+        await minePatterns();
+
         res.status(201).json(result.rows[0]);
     } catch (err) {
         console.error('Error saving complaint:', err);
@@ -579,60 +584,87 @@ app.get('/api/blockchain/patterns', verifyToken, async (req, res) => {
 });
 
 // 2. Generate and Mine Patterns from clusters
-app.post('/api/blockchain/patterns/generate', verifyToken, checkRole(['officer', 'admin', 'citizen']), async (req, res) => {
+// Pattern Mining Function
+// Pattern Mining Function
+const minePatterns = async () => {
     try {
-        // Fetch active complaints (not resolved)
-        const complaintsResult = await pool.query('SELECT category, district FROM complaints WHERE status != $1', ['resolved']);
-        const complaints = complaintsResult.rows;
+        // 1. Get active complaints grouped by District
+        const complaintsResult = await pool.query('SELECT description, district, category, created_at FROM complaints WHERE status != $1 ORDER BY created_at DESC', ['resolved']);
+        const allComplaints = complaintsResult.rows;
 
-        // Group by Area + Category
-        const groups = {};
-        complaints.forEach(c => {
-            const district = c.district || 'General';
-            const key = `${district}|${c.category}`;
-            groups[key] = (groups[key] || 0) + 1;
+        // Group by District
+        const districtGroups = {};
+        allComplaints.forEach(c => {
+            const district = c.district || 'Unknown';
+            if (!districtGroups[district]) districtGroups[district] = [];
+            districtGroups[district].push(c.description);
         });
 
         const difficulty = '000';
         const generated = [];
 
-        for (const [key, count] of Object.entries(groups)) {
-            if (count >= 2) { // Minimum 2 reports to form a "Cluster Pattern"
-                const [area, issue] = key.split('|');
+        // 2. Analyze each district with AI
+        for (const [district, descriptions] of Object.entries(districtGroups)) {
+            // User said "dont do condition like 5 same type".
+            // We'll trust the AI with even small batches (e.g., > 1) to define severity.
+            if (descriptions.length < 2) continue;
 
-                // Mining Proof of Work for the Cluster
+            // Call AI Service
+            // We slice to send max 20 recent complaints to avoid token limits, usually enough to see a pattern
+            const recentDescriptions = descriptions.slice(0, 20);
+            const aiResult = await detectPattern(recentDescriptions, district);
+
+            if (aiResult && aiResult.detected) {
+                const issue = aiResult.issue_title;
+                const severity = aiResult.severity; // AI decides High/Medium
+                const count = descriptions.length;
+                const area = district;
+
+                // Mining Proof of Work
                 let nonce = 0;
                 let hash = '';
-                const startTime = Date.now();
 
                 while (true) {
-                    // Pattern Proof Rule: Hash(Area + Issue + Count + Nonce)
-                    const dataToHash = `${area}${issue}${count}${nonce}`;
+                    const dataToHash = `${area}${issue}${severity}${nonce}`;
                     hash = crypto.createHash('sha256').update(dataToHash).digest('hex');
                     if (hash.startsWith(difficulty)) break;
                     nonce++;
                 }
 
-                // Check if similar pattern exists (to avoid duplicates, just a basic check)
+                // Check for duplicates (prevent spamming the SAME pattern detection)
+                // We check if a pattern with same Issue Title & Area exists created in the last 24 hours
                 const existing = await pool.query(
-                    'SELECT 1 FROM patterns WHERE area = $1 AND issue = $2 AND count = $3 AND blockchain_hash = $4',
-                    [area, issue, count, hash]
+                    `SELECT 1 FROM patterns 
+                     WHERE area = $1 AND issue = $2 
+                     AND created_at > NOW() - INTERVAL '24 hours'`,
+                    [area, issue]
                 );
 
                 if (existing.rows.length === 0) {
                     const result = await pool.query(
                         'INSERT INTO patterns (issue, area, count, severity, blockchain_hash, nonce) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-                        [issue, area, count, count > 5 ? 'High' : 'Medium', hash, nonce]
+                        [issue, area, count, severity, hash, nonce]
                     );
                     generated.push(result.rows[0]);
+                    console.log(`[AI-PATTERN] Detected & Mined: ${issue} in ${area} (${severity})`);
                 }
             }
         }
+        return { count: generated.length, patterns: generated };
+    } catch (err) {
+        console.error('Auto-mining error:', err);
+        return { count: 0, patterns: [] };
+    }
+};
 
+// 2. Generate and Mine Patterns from clusters
+app.post('/api/blockchain/patterns/generate', verifyToken, checkRole(['officer', 'admin', 'citizen']), async (req, res) => {
+    try {
+        const result = await minePatterns();
         res.json({
-            message: `Scanned ${complaints.length} complaints. Identified and mined ${generated.length} new Pattern Proofs.`,
-            count: generated.length,
-            patterns: generated
+            message: `Scanned and mined ${result.count} new Pattern Proofs.`,
+            count: result.count,
+            patterns: result.patterns
         });
     } catch (err) {
         console.error('Pattern generation error:', err);
