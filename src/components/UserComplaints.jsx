@@ -178,6 +178,43 @@ const UserComplaints = () => {
                                     </>
                                 )}
 
+                                {selectedComplaint.status === 'resolved' && (
+                                    <Box sx={{ mt: 3, mb: 2 }}>
+                                        <Typography variant="subtitle2" color="success.main" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+                                            <CheckCircle size={16} /> OFFICIAL RESOLUTION
+                                        </Typography>
+                                        <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: 'rgba(76, 175, 80, 0.05)', border: '1px solid rgba(76, 175, 80, 0.2)' }}>
+                                            <Typography variant="body2" color="text.primary" sx={{ fontStyle: 'italic', mb: parseImages(selectedComplaint.resolution_images).length > 0 ? 2 : 0 }}>
+                                                "{selectedComplaint.resolution_remarks || 'No remarks provided.'}"
+                                            </Typography>
+
+                                            {parseImages(selectedComplaint.resolution_images).length > 0 && (
+                                                <>
+                                                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1, fontWeight: 700 }}>
+                                                        RESOLUTION EVIDENCE:
+                                                    </Typography>
+                                                    <ImageList cols={3} gap={8} rowHeight={100}>
+                                                        {parseImages(selectedComplaint.resolution_images).map((img, i) => {
+                                                            const filename = img.split(/[/\\]/).pop();
+                                                            const url = `http://localhost:5000/uploads/${filename}`;
+                                                            return (
+                                                                <ImageListItem key={i} sx={{ borderRadius: 2, overflow: 'hidden', cursor: 'pointer' }}>
+                                                                    <img
+                                                                        src={url}
+                                                                        alt="resolution evidence"
+                                                                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                                                        onClick={() => window.open(url)}
+                                                                    />
+                                                                </ImageListItem>
+                                                            )
+                                                        })}
+                                                    </ImageList>
+                                                </>
+                                            )}
+                                        </Paper>
+                                    </Box>
+                                )}
+
                                 <Box sx={{ mt: 4, pt: 2, borderTop: `1px dashed ${theme.palette.divider}` }}>
                                     <Typography variant="subtitle2" color="primary" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, fontWeight: 700 }}>
                                         <CheckCircle size={16} /> VERIFIABLE BLOCKCHAIN PROOF

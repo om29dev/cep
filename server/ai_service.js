@@ -50,42 +50,5 @@ async function analyzeComplaint(description) {
     }
 }
 
-async function detectPattern(complaints, area) {
-    if (!process.env.GEMINI_API_KEY) return null;
 
-    try {
-        const model = genAI.getGenerativeModel({
-            model: modelName,
-            generationConfig: { responseMimeType: "application/json" }
-        });
-
-        const prompt = `
-            You are an Urban Infrastructure Analyst.
-            Analyze the following list of citizen complaints from the area/district: "${area}".
-            
-            Complaints:
-            ${JSON.stringify(complaints)}
-
-            Determine if there is a **Systemic Pattern** or **Major Infrastructure Failure** (high severity issue) emerging from these reports.
-            Do NOT just count them. Look for semantic similarity (e.g., "burst pipe", "contaminated water", "no supply").
-            
-            Return a JSON object:
-            {
-                "detected": true/false, (True if a specific pattern represents a real issue, not just random complaints)
-                "issue_title": "Short title of the systemic issue (e.g., 'Major Pipeline Burst in Sector 4')",
-                "severity": "High/Medium/Low", (High if it affects critical needs like drinking water or safety)
-                "confidence": 0-100,
-                "summary": "Brief explanation of why this is a pattern."
-            }
-        `;
-
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        return JSON.parse(response.text());
-    } catch (error) {
-        console.error("AI Pattern Detection Error:", error);
-        return null;
-    }
-}
-
-module.exports = { analyzeComplaint, detectPattern };
+module.exports = { analyzeComplaint };

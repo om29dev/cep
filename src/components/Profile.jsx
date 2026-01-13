@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Container, Paper, Typography, Avatar, Grid, Button, Divider, useTheme } from '@mui/material';
 import { useAuth } from '../AuthContext';
-import { User, Mail, Shield } from 'lucide-react';
+import { User, Mail, Shield, BadgeCheck } from 'lucide-react';
 
 const Profile = () => {
     const { user } = useAuth();
@@ -57,6 +57,18 @@ const Profile = () => {
                     <Divider sx={{ mb: 4 }} />
 
                     <Grid container spacing={3}>
+                        <Grid item xs={12}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'action.hover' }}>
+                                    <BadgeCheck size={24} color={theme.palette.primary.main} />
+                                </Box>
+                                <Box>
+                                    <Typography variant="caption" color="text.secondary">Full Name</Typography>
+                                    <Typography variant="body1" fontWeight={500}>{user.full_name || 'Not Provided'}</Typography>
+                                </Box>
+                            </Box>
+                        </Grid>
+
                         <Grid item xs={12}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                                 <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'action.hover' }}>

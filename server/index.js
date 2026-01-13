@@ -10,7 +10,7 @@ const cookieParser = require('cookie-parser');
 const crypto = require('crypto');
 const fs = require('fs');
 const nodemailer = require('nodemailer');
-const { analyzeComplaint, detectPattern } = require('./ai_service'); // Added AI Service
+const { analyzeComplaint } = require('./ai_service'); // Modified: Removed detectPattern
 
 dotenv.config();
 
@@ -146,18 +146,9 @@ const initDb = async () => {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
-            CREATE TABLE IF NOT EXISTS patterns (
-                id SERIAL PRIMARY KEY,
-                issue TEXT NOT NULL,
-                area TEXT NOT NULL,
-                count INTEGER NOT NULL,
-                severity TEXT NOT NULL,
-                status TEXT DEFAULT 'Pattern Detected',
-                blockchain_hash TEXT,
-                tx_id TEXT,
-                nonce INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
+
+
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE;
         `);
 
         // Check for specific columns (Migrations for older DBs if mostly preserving info, 
@@ -267,7 +258,7 @@ app.post('/api/auth/register', async (req, res) => {
 
         // Insert with full_name
         const result = await pool.query(
-            'INSERT INTO users (username, full_name, email, password, role) VALUES ($1, $2, $3, $4, $5) RETURNING id, username, full_name, role',
+            'INSERT INTO users (username, full_name, email, password, role) VALUES ($1, $2, $3, $4, $5) RETURNING id, username, full_name, email, role',
             [username, fullName, email, hashedPassword, role || 'citizen']
         );
 
@@ -299,10 +290,14 @@ app.post('/api/auth/login', async (req, res) => {
         const validPassword = await bcrypt.compare(password, user.password);
         if (!validPassword) return res.status(400).json({ error: 'Invalid password' });
 
+        if (user.is_blocked) {
+            return res.status(403).json({ error: 'Your account has been suspended. Please contact the administrator.' });
+        }
+
         const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET || 'secret', { expiresIn: '1d' });
 
         res.cookie('token', token, { httpOnly: true });
-        res.json({ id: user.id, username: user.username, full_name: user.full_name, role: user.role });
+        res.json({ id: user.id, username: user.username, full_name: user.full_name, email: user.email, role: user.role });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Internal Server Error' });
@@ -312,7 +307,7 @@ app.post('/api/auth/login', async (req, res) => {
 // Get Current User (Session persistence)
 app.get('/api/auth/me', verifyToken, async (req, res) => {
     try {
-        const result = await pool.query('SELECT id, username, full_name, role FROM users WHERE id = $1', [req.user.id]);
+        const result = await pool.query('SELECT id, username, full_name, email, role FROM users WHERE id = $1', [req.user.id]);
         if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
         res.json(result.rows[0]);
     } catch (err) {
@@ -382,10 +377,7 @@ app.post('/api/complaints', verifyToken, checkRole(['citizen']), upload.array('i
             [req.user.id, category, location, description, JSON.stringify(imagePaths), district, previousHash, hash, ai_urgency, ai_sentiment, nonce]
         );
 
-        // Auto-mine patterns after new complaint
-        // We don't await this to keep response fast, or we can await if we want to ensure it's done. 
-        // Given it's fast (PoW difficulty 3), awaiting is fine and safer for consistency.
-        await minePatterns();
+
 
         res.status(201).json(result.rows[0]);
     } catch (err) {
@@ -435,7 +427,7 @@ app.post('/api/complaints/:id/resolve', verifyToken, checkRole(['officer', 'admi
 // 1. Get all users
 app.get('/api/admin/users', verifyToken, checkRole(['admin']), async (req, res) => {
     try {
-        const result = await pool.query('SELECT id, username, email, role, created_at FROM users ORDER BY id ASC');
+        const result = await pool.query('SELECT id, username, full_name, email, role, is_blocked, created_at FROM users ORDER BY id ASC');
         res.json(result.rows);
     } catch (err) {
         console.error(err);
@@ -446,7 +438,7 @@ app.get('/api/admin/users', verifyToken, checkRole(['admin']), async (req, res) 
 // 2. Appoint Officer
 app.post('/api/admin/officers', verifyToken, checkRole(['admin']), async (req, res) => {
     try {
-        const { username, email, password } = req.body;
+        const { username, fullName, email, password } = req.body;
 
         const userCheck = await pool.query('SELECT * FROM users WHERE email = $1 OR username = $2', [email, username]);
         if (userCheck.rows.length > 0) {
@@ -457,8 +449,8 @@ app.post('/api/admin/officers', verifyToken, checkRole(['admin']), async (req, r
         const role = 'officer';
 
         const result = await pool.query(
-            'INSERT INTO users (username, email, password, role) VALUES ($1, $2, $3, $4) RETURNING id, username, email, role',
-            [username, email, hashedPassword, role]
+            'INSERT INTO users (username, full_name, email, password, role) VALUES ($1, $2, $3, $4, $5) RETURNING id, username, full_name, email, role',
+            [username, fullName || username, email, hashedPassword, role]
         );
 
         res.status(201).json(result.rows[0]);
@@ -505,6 +497,29 @@ app.delete('/api/admin/users/:id', verifyToken, checkRole(['admin']), async (req
     }
 });
 
+// 4. Block/Unblock User
+app.put('/api/admin/users/:id/block', verifyToken, checkRole(['admin']), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { blocked } = req.body; // true or false
+
+        // Prevent blocking admins
+        const userCheck = await pool.query('SELECT role FROM users WHERE id = $1', [id]);
+        if (userCheck.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+        if (userCheck.rows[0].role === 'admin') return res.status(403).json({ error: 'Cannot block admins' });
+
+        const result = await pool.query(
+            'UPDATE users SET is_blocked = $1 WHERE id = $2 RETURNING id, username, is_blocked',
+            [blocked, id]
+        );
+
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Failed to update user status' });
+    }
+});
+
 
 
 // --- BLOCKCHAIN INTEGRITY VERIFICATION ---
@@ -519,7 +534,7 @@ app.get('/api/blockchain/verify', verifyToken, async (req, res) => {
         const difficulty = '000';
 
         for (const complaint of complaints) {
-            const dataToHash = `${complaint.user_id}${complaint.category}${complaint.location}${complaint.description}${complaint.district}${complaint.previous_hash}${complaint.ai_summary}${complaint.ai_urgency}${complaint.nonce}`;
+            const dataToHash = `${complaint.user_id}${complaint.category}${complaint.location}${complaint.description}${complaint.district}${complaint.previous_hash}${complaint.ai_urgency}${complaint.nonce}`;
             const calculatedHash = crypto.createHash('sha256').update(dataToHash).digest('hex');
 
             const isHashValid = calculatedHash === complaint.hash;
@@ -542,25 +557,13 @@ app.get('/api/blockchain/verify', verifyToken, async (req, res) => {
             expectedPreviousHash = complaint.hash;
         }
 
-        // Verify Patterns
-        const patternsResult = await pool.query('SELECT * FROM patterns');
-        const patterns = patternsResult.rows;
-        let patternsValid = true;
+        // Patterns verification removed
 
-        for (const pattern of patterns) {
-            const dataToHash = `${pattern.area}${pattern.issue}${pattern.count}${pattern.nonce}`;
-            const calculatedHash = crypto.createHash('sha256').update(dataToHash).digest('hex');
-            if (calculatedHash !== pattern.blockchain_hash || !calculatedHash.startsWith(difficulty)) {
-                patternsValid = false;
-                isValid = false;
-            }
-        }
 
         res.json({
             isValid,
             totalRecords: complaints.length,
-            patternProofs: patterns.length,
-            patternsValid,
+
             lastVerifiedAt: new Date(),
             details: chainStatus
         });
@@ -570,106 +573,7 @@ app.get('/api/blockchain/verify', verifyToken, async (req, res) => {
     }
 });
 
-// --- PATTERN PROOF MINING & RETRIEVAL ---
 
-// 1. Get all pattern proofs
-app.get('/api/blockchain/patterns', verifyToken, async (req, res) => {
-    try {
-        const result = await pool.query('SELECT * FROM patterns ORDER BY created_at DESC');
-        res.json(result.rows);
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Failed to fetch pattern proofs' });
-    }
-});
-
-// 2. Generate and Mine Patterns from clusters
-// Pattern Mining Function
-// Pattern Mining Function
-const minePatterns = async () => {
-    try {
-        // 1. Get active complaints grouped by District
-        const complaintsResult = await pool.query('SELECT description, district, category, created_at FROM complaints WHERE status != $1 ORDER BY created_at DESC', ['resolved']);
-        const allComplaints = complaintsResult.rows;
-
-        // Group by District
-        const districtGroups = {};
-        allComplaints.forEach(c => {
-            const district = c.district || 'Unknown';
-            if (!districtGroups[district]) districtGroups[district] = [];
-            districtGroups[district].push(c.description);
-        });
-
-        const difficulty = '000';
-        const generated = [];
-
-        // 2. Analyze each district with AI
-        for (const [district, descriptions] of Object.entries(districtGroups)) {
-            // User said "dont do condition like 5 same type".
-            // We'll trust the AI with even small batches (e.g., > 1) to define severity.
-            if (descriptions.length < 2) continue;
-
-            // Call AI Service
-            // We slice to send max 20 recent complaints to avoid token limits, usually enough to see a pattern
-            const recentDescriptions = descriptions.slice(0, 20);
-            const aiResult = await detectPattern(recentDescriptions, district);
-
-            if (aiResult && aiResult.detected) {
-                const issue = aiResult.issue_title;
-                const severity = aiResult.severity; // AI decides High/Medium
-                const count = descriptions.length;
-                const area = district;
-
-                // Mining Proof of Work
-                let nonce = 0;
-                let hash = '';
-
-                while (true) {
-                    const dataToHash = `${area}${issue}${severity}${nonce}`;
-                    hash = crypto.createHash('sha256').update(dataToHash).digest('hex');
-                    if (hash.startsWith(difficulty)) break;
-                    nonce++;
-                }
-
-                // Check for duplicates (prevent spamming the SAME pattern detection)
-                // We check if a pattern with same Issue Title & Area exists created in the last 24 hours
-                const existing = await pool.query(
-                    `SELECT 1 FROM patterns 
-                     WHERE area = $1 AND issue = $2 
-                     AND created_at > NOW() - INTERVAL '24 hours'`,
-                    [area, issue]
-                );
-
-                if (existing.rows.length === 0) {
-                    const result = await pool.query(
-                        'INSERT INTO patterns (issue, area, count, severity, blockchain_hash, nonce) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-                        [issue, area, count, severity, hash, nonce]
-                    );
-                    generated.push(result.rows[0]);
-                    console.log(`[AI-PATTERN] Detected & Mined: ${issue} in ${area} (${severity})`);
-                }
-            }
-        }
-        return { count: generated.length, patterns: generated };
-    } catch (err) {
-        console.error('Auto-mining error:', err);
-        return { count: 0, patterns: [] };
-    }
-};
-
-// 2. Generate and Mine Patterns from clusters
-app.post('/api/blockchain/patterns/generate', verifyToken, checkRole(['officer', 'admin', 'citizen']), async (req, res) => {
-    try {
-        const result = await minePatterns();
-        res.json({
-            message: `Scanned and mined ${result.count} new Pattern Proofs.`,
-            count: result.count,
-            patterns: result.patterns
-        });
-    } catch (err) {
-        res.status(500).json({ error: 'Failed to generate pattern proofs' });
-    }
-});
 
 app.post('/api/subscribe', async (req, res) => {
     try {

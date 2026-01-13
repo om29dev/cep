@@ -212,7 +212,7 @@ const DashboardPreview = () => {
     const theme = useTheme();
     const navigate = useNavigate();
     const [complaints, setComplaints] = useState([]);
-    const [patterns, setPatterns] = useState([]); // Added patterns state
+
     const [loading, setLoading] = useState(true);
     const [selectedComplaint, setSelectedComplaint] = useState(null);
 
@@ -226,18 +226,11 @@ const DashboardPreview = () => {
         }
     };
 
-    const fetchPatterns = async () => {
-        try {
-            const response = await axios.get('/api/blockchain/patterns');
-            setPatterns(response.data);
-        } catch (err) {
-            console.error("Failed to fetch patterns:", err);
-        }
-    };
+
 
     const refreshData = async () => {
         setLoading(true);
-        await Promise.all([fetchComplaints(), fetchPatterns()]);
+        await Promise.all([fetchComplaints()]);
         setLoading(false);
     }
 

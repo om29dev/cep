@@ -20,7 +20,7 @@ import {
     Grid
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
-import { UserPlus, Trash2, Shield, User, Search, TrendingUp } from 'lucide-react';
+import { UserPlus, Trash2, Shield, User, Search, TrendingUp, Lock, Unlock } from 'lucide-react';
 import { useTheme } from '@mui/material/styles';
 
 const AdminDashboard = () => {
@@ -28,13 +28,13 @@ const AdminDashboard = () => {
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [openDialog, setOpenDialog] = useState(false);
-    const [patterns, setPatterns] = useState([]);
+
 
     // Search State
     const [searchQuery, setSearchQuery] = useState('');
 
     // Form State
-    const [formData, setFormData] = useState({ username: '', email: '', password: '' });
+    const [formData, setFormData] = useState({ username: '', fullName: '', email: '', password: '' });
     const [error, setError] = useState('');
     const [successMsg, setSuccessMsg] = useState('');
 
@@ -49,16 +49,8 @@ const AdminDashboard = () => {
         }
     };
 
-    const fetchPatterns = async () => {
-        try {
-            const res = await axios.get('/api/blockchain/patterns');
-            setPatterns(res.data);
-        } catch (e) { console.error(e); }
-    };
-
     useEffect(() => {
         fetchUsers();
-        fetchPatterns();
     }, []);
 
     // Filter Logic
@@ -79,13 +71,26 @@ const AdminDashboard = () => {
         }
     };
 
+    const handleBlockToggle = async (id, currentStatus) => {
+        const action = currentStatus ? "unblock" : "block";
+        if (!window.confirm(`Are you sure you want to ${action} this user?`)) return;
+        try {
+            const res = await axios.put(`/api/admin/users/${id}/block`, { blocked: !currentStatus });
+            setUsers(prev => prev.map(u => u.id === id ? { ...u, is_blocked: res.data.is_blocked } : u));
+            setSuccessMsg(`User ${action}ed successfully`);
+            setTimeout(() => setSuccessMsg(''), 3000);
+        } catch (err) {
+            alert(err.response?.data?.error || "Update failed");
+        }
+    };
+
     const handleCreateOfficer = async () => {
         setError('');
         try {
             const res = await axios.post('/api/admin/officers', formData);
             setUsers([...users, res.data]);
             setOpenDialog(false);
-            setFormData({ username: '', email: '', password: '' });
+            setFormData({ username: '', fullName: '', email: '', password: '' });
             setSuccessMsg(`Officer ${res.data.username} appointed successfully!`);
             setTimeout(() => setSuccessMsg(''), 3000);
         } catch (err) {
@@ -98,12 +103,20 @@ const AdminDashboard = () => {
         {
             field: 'username',
             headerName: 'Username',
-            width: 180,
+            width: 150,
             renderCell: (params) => (
                 <Stack direction="row" alignItems="center" gap={1}>
                     {params.row.role.toLowerCase() === 'admin' ? <Shield size={16} color="#d32f2f" /> : <User size={16} />}
                     {params.value}
                 </Stack>
+            )
+        },
+        {
+            field: 'full_name',
+            headerName: 'Full Name',
+            width: 180,
+            renderCell: (params) => (
+                <Typography variant="body2">{params.value || '-'}</Typography>
             )
         },
         { field: 'email', headerName: 'Email', width: 250 },
@@ -117,7 +130,7 @@ const AdminDashboard = () => {
                     color={params.value.toLowerCase() === 'officer' ? "secondary" : params.value.toLowerCase() === 'admin' ? "error" : "primary"}
                     size="small"
                     variant={params.value.toLowerCase() === 'citizen' ? "outlined" : "filled"}
-                    sx={{ fontWeight: 'bold' }}
+                    sx={{ fontWeight: 'bold', borderRadius: 0.5 }}
                 />
             )
         },
@@ -125,13 +138,29 @@ const AdminDashboard = () => {
             field: 'actions',
             headerName: 'Actions',
             width: 120,
-            renderCell: (params) => (
-                params.row.role.toLowerCase() !== 'admin' && (
-                    <IconButton onClick={() => handleDelete(params.row.id)} color="error" size="small">
-                        <Trash2 size={18} />
+            renderCell: (params) => {
+                if (params.row.role.toLowerCase() === 'admin') return null;
+
+                if (params.row.role.toLowerCase() === 'officer') {
+                    return (
+                        <IconButton onClick={() => handleDelete(params.row.id)} color="error" size="small" title="Delete Officer">
+                            <Trash2 size={18} />
+                        </IconButton>
+                    );
+                }
+
+                // Default for citizens: Block/Unblock
+                return (
+                    <IconButton
+                        onClick={() => handleBlockToggle(params.row.id, params.row.is_blocked)}
+                        color={params.row.is_blocked ? "success" : "warning"}
+                        size="small"
+                        title={params.row.is_blocked ? "Unblock User" : "Block User"}
+                    >
+                        {params.row.is_blocked ? <Unlock size={18} /> : <Lock size={18} />}
                     </IconButton>
-                )
-            )
+                );
+            }
         }
     ];
 
@@ -166,7 +195,7 @@ const AdminDashboard = () => {
                     sx={{
                         p: 2,
                         mb: 3,
-                        borderRadius: 3,
+                        borderRadius: 1,
                         border: `1px solid ${theme.palette.divider}`,
                         background: theme.palette.background.paper
                     }}
@@ -182,7 +211,7 @@ const AdminDashboard = () => {
                                     <Search size={20} color={theme.palette.text.secondary} />
                                 </InputAdornment>
                             ),
-                            sx: { borderRadius: 2 }
+                            sx: { borderRadius: 0.5 }
                         }}
                         variant="outlined"
                         size="small"
@@ -195,7 +224,7 @@ const AdminDashboard = () => {
                     sx={{
                         p: 3,
                         mb: 4,
-                        borderRadius: 3,
+                        borderRadius: 1,
                         border: `1px solid ${theme.palette.divider}`,
                         background: 'linear-gradient(135deg, rgba(157, 80, 187, 0.05) 0%, rgba(0, 210, 255, 0.05) 100%)',
                         display: 'flex',
@@ -240,7 +269,7 @@ const AdminDashboard = () => {
                             }}
                             sx={{
                                 fontWeight: 800,
-                                borderRadius: 2,
+                                borderRadius: 0.5,
                                 borderColor: 'rgba(0, 210, 255, 0.5)',
                                 color: '#00D2FF'
                             }}
@@ -251,79 +280,9 @@ const AdminDashboard = () => {
                 </Paper>
 
                 {/* PATTERN PROOF (CLUSTER LOGIC) SECTION */}
-                <Paper
-                    elevation={0}
-                    sx={{
-                        p: 3,
-                        mb: 4,
-                        borderRadius: 3,
-                        border: `1px solid ${theme.palette.divider}`,
-                        background: theme.palette.mode === 'dark' ? 'rgba(59, 130, 246, 0.03)' : 'rgba(59, 130, 246, 0.01)',
-                    }}
-                >
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                        <Box>
-                            <Typography variant="h6" fontWeight={800} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <TrendingUp size={20} color="#3b82f6" /> Pattern Proof Ledger
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                                Identify systemic water issues by mining cluster proofs from across the city.
-                            </Typography>
-                        </Box>
-                        <Button
-                            variant="contained"
-                            size="small"
-                            onClick={async () => {
-                                try {
-                                    const res = await axios.post('/api/blockchain/patterns/generate');
-                                    alert(res.data.message);
-                                    window.location.reload();
-                                } catch (e) {
-                                    alert("Mining failed: " + (e.response?.data?.error || e.message));
-                                }
-                            }}
-                            sx={{ fontWeight: 800, borderRadius: 2 }}
-                        >
-                            Scan & Mine Patterns
-                        </Button>
-                    </Box>
 
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        <Typography variant="caption" sx={{ fontWeight: 700, opacity: 0.6, letterSpacing: 1 }}>RECENTLY MINED PROOFS</Typography>
-                        <Grid container spacing={2}>
-                            {patterns.length === 0 ? (
-                                <Grid item xs={12}>
-                                    <Box sx={{ p: 2, border: '1px dashed rgba(255,255,255,0.1)', borderRadius: 2, textAlign: 'center' }}>
-                                        <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>
-                                            Run a geospatial scan to anchor identified complaint clusters to the ledger.
-                                        </Typography>
-                                    </Box>
-                                </Grid>
-                            ) : (
-                                patterns.slice(0, 4).map((pattern) => (
-                                    <Grid item xs={12} sm={6} key={pattern.id}>
-                                        <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.01)' }}>
-                                            <Box display="flex" justifyContent="space-between" mb={1}>
-                                                <Typography variant="subtitle2" fontWeight={800}>{pattern.issue}</Typography>
-                                                <Chip label={pattern.severity} size="small" color={pattern.severity === 'High' ? 'error' : 'warning'} sx={{ height: 16, fontSize: '0.65rem' }} />
-                                            </Box>
-                                            <Typography variant="body2" color="text.secondary" gutterBottom>{pattern.count} Reports in {pattern.area}</Typography>
-                                            <Box sx={{ bgcolor: 'rgba(0,0,0,0.2)', p: 1, borderRadius: 1 }}>
-                                                <Typography variant="caption" display="block" color="text.secondary" sx={{ fontSize: '0.6rem' }}>BLOCKCHAIN HASH</Typography>
-                                                <Typography variant="caption" sx={{ fontFamily: 'monospace', color: '#3b82f6', fontSize: '0.65rem', wordBreak: 'break-all' }}>
-                                                    {pattern.blockchain_hash}
-                                                </Typography>
-                                                <Typography variant="caption" display="block" color="text.secondary" sx={{ fontSize: '0.6rem', mt: 0.5 }}>NONCE (PROOF OF WORK): {pattern.nonce}</Typography>
-                                            </Box>
-                                        </Paper>
-                                    </Grid>
-                                ))
-                            )}
-                        </Grid>
-                    </Box>
-                </Paper>
 
-                <Paper elevation={3} sx={{ height: 500, width: '100%', borderRadius: 4, overflow: 'hidden' }}>
+                <Paper elevation={3} sx={{ height: 500, width: '100%', borderRadius: 1, overflow: 'hidden' }}>
                     {loading ? (
                         <Box display="flex" justifyContent="center" alignItems="center" height="100%">
                             <CircularProgress />
@@ -352,6 +311,12 @@ const AdminDashboard = () => {
                                 onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                             />
                             <TextField
+                                label="Full Name"
+                                fullWidth
+                                value={formData.fullName}
+                                onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                            />
+                            <TextField
                                 label="Email Address"
                                 type="email"
                                 fullWidth
@@ -368,8 +333,7 @@ const AdminDashboard = () => {
                         </Stack>
                     </DialogContent>
                     <DialogActions sx={{ p: 3 }}>
-                        <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
-                        <Button variant="contained" onClick={handleCreateOfficer} disabled={!formData.email || !formData.password}>
+                        <Button variant="contained" onClick={handleCreateOfficer} disabled={!formData.email || !formData.password || !formData.username || !formData.fullName}>
                             Create Account
                         </Button>
                     </DialogActions>

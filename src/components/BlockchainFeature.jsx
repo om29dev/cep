@@ -54,7 +54,7 @@ const BlockchainFeature = () => {
 
                         <Box sx={{ mt: 4 }}>
                             {[
-                                { title: "Data Hashing", text: "Water complaint clusters are summarized into cryptographic hashes." },
+                                { title: "Data Hashing", text: "Individual water complaints are secured with cryptographic hashes." },
                                 { title: "Immutable Registry", text: "Hashes are stored on blockchain, proving water data existed at given time." },
                                 { title: "Anti-Manipulation", text: "Prevents deleting or modifying water complaints after submission." }
                             ].map((item, i) => (
