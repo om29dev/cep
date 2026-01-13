@@ -495,6 +495,20 @@ const OfficerComplaints = () => {
                                                         </Typography>
                                                     </Box>
                                                 </Box>
+                                                <Divider />
+                                                <Box sx={{ bgcolor: theme.palette.mode === 'dark' ? 'rgba(157, 80, 187, 0.05)' : 'rgba(157, 80, 187, 0.02)', p: 1.5, borderRadius: 2, border: '1px solid rgba(157, 80, 187, 0.2)' }}>
+                                                    <Typography variant="caption" sx={{ color: '#9D50BB', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
+                                                        <CheckCircle2 size={14} /> BLOCKCHAIN PROOF
+                                                    </Typography>
+                                                    <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: '0.65rem' }}>SECURE AUDIT ID</Typography>
+                                                    <Typography variant="caption" sx={{ fontFamily: 'monospace', wordBreak: 'break-word', display: 'block', mb: 1, letterSpacing: 1, fontWeight: 700 }}>
+                                                        {selectedComplaint.hash ? `0x${selectedComplaint.hash.substring(0, 8)}...` : 'PENDING'}
+                                                    </Typography>
+                                                    <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: '0.65rem' }}>NONCE (PROOF OF WORK)</Typography>
+                                                    <Typography variant="caption" sx={{ fontFamily: 'monospace', display: 'block', mb: 1, color: 'primary.main', fontWeight: 700 }}>
+                                                        {selectedComplaint.nonce || 0}
+                                                    </Typography>
+                                                </Box>
                                             </Stack>
                                         </Paper>
                                     </Grid>

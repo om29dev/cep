@@ -27,6 +27,7 @@ const AdminDashboard = () => {
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [openDialog, setOpenDialog] = useState(false);
+    const [patterns, setPatterns] = useState([]);
 
     // Search State
     const [searchQuery, setSearchQuery] = useState('');
@@ -47,8 +48,16 @@ const AdminDashboard = () => {
         }
     };
 
+    const fetchPatterns = async () => {
+        try {
+            const res = await axios.get('/api/blockchain/patterns');
+            setPatterns(res.data);
+        } catch (e) { console.error(e); }
+    };
+
     useEffect(() => {
         fetchUsers();
+        fetchPatterns();
     }, []);
 
     // Filter Logic
@@ -179,6 +188,140 @@ const AdminDashboard = () => {
                     />
                 </Paper>
 
+                {/* BLOCKCHAIN SYSTEM INTEGRITY SECTION */}
+                <Paper
+                    elevation={0}
+                    sx={{
+                        p: 3,
+                        mb: 4,
+                        borderRadius: 3,
+                        border: `1px solid ${theme.palette.divider}`,
+                        background: 'linear-gradient(135deg, rgba(157, 80, 187, 0.05) 0%, rgba(0, 210, 255, 0.05) 100%)',
+                        display: 'flex',
+                        flexDirection: { xs: 'column', md: 'row' },
+                        justifyContent: 'space-between',
+                        alignItems: { xs: 'flex-start', md: 'center' },
+                        gap: 2
+                    }}
+                >
+                    <Box>
+                        <Typography variant="h6" fontWeight={800} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Shield size={20} color="#9D50BB" /> System Integrity Monitor
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                            Verify the mathematical validity of all immutable records on the blockchain layer.
+                        </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Box sx={{ textAlign: 'right', display: { xs: 'none', sm: 'block' } }}>
+                            <Typography variant="caption" color="success.main" fontWeight={700} sx={{ display: 'block' }}>
+                                CHAIN STATUS: OPERATIONAL
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                                Algorithms: SHA-256 + ECDSA
+                            </Typography>
+                        </Box>
+                        <Button
+                            variant="outlined"
+                            color="primary"
+                            size="small"
+                            onClick={async () => {
+                                try {
+                                    const res = await axios.get('/api/blockchain/verify');
+                                    if (res.data.isValid) {
+                                        alert(`Chain Integrity Verified! Verified ${res.data.totalRecords} records across the distributed ledger.`);
+                                    } else {
+                                        alert("CRITICAL WARNING: Chain Integrity Compromised! Discrepancy detected in record hashes.");
+                                    }
+                                } catch (e) {
+                                    alert("Verification failed: " + e.message);
+                                }
+                            }}
+                            sx={{
+                                fontWeight: 800,
+                                borderRadius: 2,
+                                borderColor: 'rgba(0, 210, 255, 0.5)',
+                                color: '#00D2FF'
+                            }}
+                        >
+                            Run Integrity Check
+                        </Button>
+                    </Box>
+                </Paper>
+
+                {/* PATTERN PROOF (CLUSTER LOGIC) SECTION */}
+                <Paper
+                    elevation={0}
+                    sx={{
+                        p: 3,
+                        mb: 4,
+                        borderRadius: 3,
+                        border: `1px solid ${theme.palette.divider}`,
+                        background: theme.palette.mode === 'dark' ? 'rgba(59, 130, 246, 0.03)' : 'rgba(59, 130, 246, 0.01)',
+                    }}
+                >
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                        <Box>
+                            <Typography variant="h6" fontWeight={800} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <TrendingUp size={20} color="#3b82f6" /> Pattern Proof Ledger
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                                Identify systemic water issues by mining cluster proofs from across the city.
+                            </Typography>
+                        </Box>
+                        <Button
+                            variant="contained"
+                            size="small"
+                            onClick={async () => {
+                                try {
+                                    const res = await axios.post('/api/blockchain/patterns/generate');
+                                    alert(res.data.message);
+                                    window.location.reload();
+                                } catch (e) {
+                                    alert("Mining failed: " + (e.response?.data?.error || e.message));
+                                }
+                            }}
+                            sx={{ fontWeight: 800, borderRadius: 2 }}
+                        >
+                            Scan & Mine Patterns
+                        </Button>
+                    </Box>
+
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <Typography variant="caption" sx={{ fontWeight: 700, opacity: 0.6, letterSpacing: 1 }}>RECENTLY MINED PROOFS</Typography>
+                        <Grid container spacing={2}>
+                            {patterns.length === 0 ? (
+                                <Grid item xs={12}>
+                                    <Box sx={{ p: 2, border: '1px dashed rgba(255,255,255,0.1)', borderRadius: 2, textAlign: 'center' }}>
+                                        <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>
+                                            Run a geospatial scan to anchor identified complaint clusters to the ledger.
+                                        </Typography>
+                                    </Box>
+                                </Grid>
+                            ) : (
+                                patterns.slice(0, 4).map((pattern) => (
+                                    <Grid item xs={12} sm={6} key={pattern.id}>
+                                        <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.01)' }}>
+                                            <Box display="flex" justifyContent="space-between" mb={1}>
+                                                <Typography variant="subtitle2" fontWeight={800}>{pattern.issue}</Typography>
+                                                <Chip label={pattern.severity} size="small" color={pattern.severity === 'High' ? 'error' : 'warning'} sx={{ height: 16, fontSize: '0.65rem' }} />
+                                            </Box>
+                                            <Typography variant="body2" color="text.secondary" gutterBottom>{pattern.count} Reports in {pattern.area}</Typography>
+                                            <Box sx={{ bgcolor: 'rgba(0,0,0,0.2)', p: 1, borderRadius: 1 }}>
+                                                <Typography variant="caption" display="block" color="text.secondary" sx={{ fontSize: '0.6rem' }}>BLOCKCHAIN HASH</Typography>
+                                                <Typography variant="caption" sx={{ fontFamily: 'monospace', color: '#3b82f6', fontSize: '0.65rem', wordBreak: 'break-all' }}>
+                                                    {pattern.blockchain_hash}
+                                                </Typography>
+                                                <Typography variant="caption" display="block" color="text.secondary" sx={{ fontSize: '0.6rem', mt: 0.5 }}>NONCE (PROOF OF WORK): {pattern.nonce}</Typography>
+                                            </Box>
+                                        </Paper>
+                                    </Grid>
+                                ))
+                            )}
+                        </Grid>
+                    </Box>
+                </Paper>
+
                 <Paper elevation={3} sx={{ height: 500, width: '100%', borderRadius: 4, overflow: 'hidden' }}>
                     {loading ? (
                         <Box display="flex" justifyContent="center" alignItems="center" height="100%">
@@ -231,7 +374,7 @@ const AdminDashboard = () => {
                     </DialogActions>
                 </Dialog>
             </Container>
-        </Box>
+        </Box >
     );
 };
 

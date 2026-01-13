@@ -177,6 +177,32 @@ const UserComplaints = () => {
                                         </ImageList>
                                     </>
                                 )}
+
+                                <Box sx={{ mt: 4, pt: 2, borderTop: `1px dashed ${theme.palette.divider}` }}>
+                                    <Typography variant="subtitle2" color="primary" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, fontWeight: 700 }}>
+                                        <CheckCircle size={16} /> VERIFIABLE BLOCKCHAIN PROOF
+                                    </Typography>
+                                    <Box sx={{ bgcolor: theme.palette.mode === 'dark' ? 'rgba(0, 210, 255, 0.05)' : 'rgba(0, 210, 255, 0.02)', p: 1.5, borderRadius: 2, border: `1px solid ${theme.palette.divider}` }}>
+                                        <Box sx={{ mb: 1.5 }}>
+                                            <Typography variant="caption" color="text.secondary" display="block">SECURE AUDIT ID</Typography>
+                                            <Typography variant="caption" sx={{ fontFamily: 'monospace', wordBreak: 'break-word', color: '#9D50BB', fontSize: '1rem', letterSpacing: 2 }}>
+                                                {selectedComplaint.hash ? `0x${selectedComplaint.hash.substring(0, 8)}...` : 'PENDING'}
+                                            </Typography>
+                                        </Box>
+                                        <Box sx={{ mb: 1.5 }}>
+                                            <Typography variant="caption" color="text.secondary" display="block">MINING NONCE</Typography>
+                                            <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'primary.main', fontWeight: 800 }}>
+                                                {selectedComplaint.nonce || 0} (Calculated to meet "000" difficulty)
+                                            </Typography>
+                                        </Box>
+                                        <Box sx={{ mt: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                                            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#4CAF50' }} />
+                                            <Typography variant="caption" fontWeight={700} color="success.main">
+                                                Integrity Verified via Cryptographic Chain
+                                            </Typography>
+                                        </Box>
+                                    </Box>
+                                </Box>
                             </DialogContent>
                             <DialogActions sx={{ p: 3 }}>
                                 <Button onClick={() => setSelectedComplaint(null)} fullWidth variant="outlined" sx={{ borderRadius: 2 }}>

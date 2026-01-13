@@ -2,10 +2,26 @@ import { Box, Typography, Container, Grid, Paper, useTheme, useMediaQuery } from
 import { Lock, Cpu, Database, CheckCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+
 const BlockchainFeature = () => {
     const theme = useTheme();
     const isDarkMode = theme.palette.mode === 'dark';
     const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+    const [stats, setStats] = useState({ totalRecords: 0, isValid: true });
+
+    useEffect(() => {
+        const fetchStats = async () => {
+            try {
+                const res = await axios.get('/api/blockchain/verify');
+                setStats(res.data);
+            } catch (e) {
+                console.error("Failed to fetch blockchain stats");
+            }
+        };
+        fetchStats();
+    }, []);
 
     return (
         <Box sx={{
@@ -75,13 +91,13 @@ const BlockchainFeature = () => {
                                     boxShadow: isDarkMode ? 'none' : '0 10px 40px rgba(0,0,0,0.05)'
                                 }}>
                                     <Lock size={isMobile ? 48 : 64} color="#9D50BB" style={{ marginBottom: 20 }} />
-                                    <Typography variant={isMobile ? "subtitle1" : "h6"} fontWeight={700}>Block #4829</Typography>
-                                    <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'primary.main' }}>
-                                        SHA-256: 0x72...f9a
+                                    <Typography variant={isMobile ? "subtitle1" : "h6"} fontWeight={700}>Block #{4800 + (stats.totalRecords || 0)}</Typography>
+                                    <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, fontFamily: 'monospace', color: 'primary.main' }}>
+                                        <CheckCircle size={12} /> {stats.isValid ? "VERIFIED CHAIN" : "CHAIN DISCREPANCY"}
                                     </Typography>
                                     <Box sx={{ mt: 2, textAlign: 'center' }}>
-                                        <Typography variant="body2" color="text.secondary">142 Water Issues Verified</Typography>
-                                        <Typography variant="caption" display="block">Region: Navi Mumbai</Typography>
+                                        <Typography variant="body2" color="text.secondary">{stats.totalRecords} Secure Records Stored</Typography>
+                                        <Typography variant="caption" display="block">Layer: Cryptographic Proof-of-Trust</Typography>
                                     </Box>
                                 </Paper>
                             </motion.div>

@@ -135,7 +135,8 @@ const initDb = async () => {
                 previous_hash TEXT,
                 ai_summary TEXT,
                 ai_urgency TEXT,
-                ai_sentiment TEXT
+                ai_sentiment TEXT,
+                nonce INTEGER DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS otp_verifications (
@@ -154,6 +155,7 @@ const initDb = async () => {
                 status TEXT DEFAULT 'Pattern Detected',
                 blockchain_hash TEXT,
                 tx_id TEXT,
+                nonce INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         `);
@@ -350,12 +352,31 @@ app.post('/api/complaints', verifyToken, checkRole(['citizen']), upload.array('i
         const lastComplaintResult = await pool.query('SELECT hash FROM complaints ORDER BY id DESC LIMIT 1');
         const previousHash = lastComplaintResult.rows.length > 0 ? lastComplaintResult.rows[0].hash : '0000000000000000000000000000000000000000000000000000000000000000';
 
-        const dataToHash = `${req.user.id}${category}${location}${description}${district}${previousHash}${ai_summary}${ai_urgency}`;
-        const hash = crypto.createHash('sha256').update(dataToHash).digest('hex');
+        // --- PROOF OF WORK (MINING) RULE ---
+        // Requirement: Hash must start with '000' (Difficulty: 3)
+        let nonce = 0;
+        let hash = '';
+        const difficulty = '000';
+
+        console.log(`[BLOCKCHAIN] Mining new complaint record...`);
+        const startTime = Date.now();
+
+        while (true) {
+            const dataToHash = `${req.user.id}${category}${location}${description}${district}${previousHash}${ai_summary}${ai_urgency}${nonce}`;
+            hash = crypto.createHash('sha256').update(dataToHash).digest('hex');
+
+            if (hash.startsWith(difficulty)) {
+                break;
+            }
+            nonce++;
+        }
+
+        const timeTaken = ((Date.now() - startTime) / 1000).toFixed(2);
+        console.log(`[BLOCKCHAIN] Block Mined! Nonce: ${nonce}, Time: ${timeTaken}s, Hash: ${hash}`);
 
         const result = await pool.query(
-            'INSERT INTO complaints (user_id, category, location, description, images, district, previous_hash, hash, ai_summary, ai_urgency, ai_sentiment) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *',
-            [req.user.id, category, location, description, JSON.stringify(imagePaths), district, previousHash, hash, ai_summary, ai_urgency, ai_sentiment]
+            'INSERT INTO complaints (user_id, category, location, description, images, district, previous_hash, hash, ai_summary, ai_urgency, ai_sentiment, nonce) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *',
+            [req.user.id, category, location, description, JSON.stringify(imagePaths), district, previousHash, hash, ai_summary, ai_urgency, ai_sentiment, nonce]
         );
         res.status(201).json(result.rows[0]);
     } catch (err) {
@@ -476,6 +497,144 @@ app.delete('/api/admin/users/:id', verifyToken, checkRole(['admin']), async (req
 });
 
 
+
+// --- BLOCKCHAIN INTEGRITY VERIFICATION ---
+app.get('/api/blockchain/verify', verifyToken, async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM complaints ORDER BY id ASC');
+        const complaints = result.rows;
+
+        let isValid = true;
+        const chainStatus = [];
+        let expectedPreviousHash = '0000000000000000000000000000000000000000000000000000000000000000';
+        const difficulty = '000';
+
+        for (const complaint of complaints) {
+            const dataToHash = `${complaint.user_id}${complaint.category}${complaint.location}${complaint.description}${complaint.district}${complaint.previous_hash}${complaint.ai_summary}${complaint.ai_urgency}${complaint.nonce}`;
+            const calculatedHash = crypto.createHash('sha256').update(dataToHash).digest('hex');
+
+            const isHashValid = calculatedHash === complaint.hash;
+            const isChainValid = complaint.previous_hash === expectedPreviousHash;
+            const isDifficultyMet = calculatedHash.startsWith(difficulty);
+
+            chainStatus.push({
+                id: complaint.id,
+                storedHash: complaint.hash,
+                calculatedHash: calculatedHash,
+                previousHash: complaint.previous_hash,
+                isHashValid,
+                isChainValid,
+                isDifficultyMet
+            });
+
+            if (!isHashValid || !isChainValid || !isDifficultyMet) {
+                isValid = false;
+            }
+            expectedPreviousHash = complaint.hash;
+        }
+
+        // Verify Patterns
+        const patternsResult = await pool.query('SELECT * FROM patterns');
+        const patterns = patternsResult.rows;
+        let patternsValid = true;
+
+        for (const pattern of patterns) {
+            const dataToHash = `${pattern.area}${pattern.issue}${pattern.count}${pattern.nonce}`;
+            const calculatedHash = crypto.createHash('sha256').update(dataToHash).digest('hex');
+            if (calculatedHash !== pattern.blockchain_hash || !calculatedHash.startsWith(difficulty)) {
+                patternsValid = false;
+                isValid = false;
+            }
+        }
+
+        res.json({
+            isValid,
+            totalRecords: complaints.length,
+            patternProofs: patterns.length,
+            patternsValid,
+            lastVerifiedAt: new Date(),
+            details: chainStatus
+        });
+    } catch (err) {
+        console.error('Blockchain verification error:', err);
+        res.status(500).json({ error: 'Failed to verify blockchain integrity' });
+    }
+});
+
+// --- PATTERN PROOF MINING & RETRIEVAL ---
+
+// 1. Get all pattern proofs
+app.get('/api/blockchain/patterns', verifyToken, async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM patterns ORDER BY created_at DESC');
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Failed to fetch pattern proofs' });
+    }
+});
+
+// 2. Generate and Mine Patterns from clusters
+app.post('/api/blockchain/patterns/generate', verifyToken, checkRole(['officer', 'admin', 'citizen']), async (req, res) => {
+    try {
+        // Fetch active complaints (not resolved)
+        const complaintsResult = await pool.query('SELECT category, district FROM complaints WHERE status != $1', ['resolved']);
+        const complaints = complaintsResult.rows;
+
+        // Group by Area + Category
+        const groups = {};
+        complaints.forEach(c => {
+            const district = c.district || 'General';
+            const key = `${district}|${c.category}`;
+            groups[key] = (groups[key] || 0) + 1;
+        });
+
+        const difficulty = '000';
+        const generated = [];
+
+        for (const [key, count] of Object.entries(groups)) {
+            if (count >= 2) { // Minimum 2 reports to form a "Cluster Pattern"
+                const [area, issue] = key.split('|');
+
+                // Mining Proof of Work for the Cluster
+                let nonce = 0;
+                let hash = '';
+                const startTime = Date.now();
+
+                while (true) {
+                    // Pattern Proof Rule: Hash(Area + Issue + Count + Nonce)
+                    const dataToHash = `${area}${issue}${count}${nonce}`;
+                    hash = crypto.createHash('sha256').update(dataToHash).digest('hex');
+                    if (hash.startsWith(difficulty)) break;
+                    nonce++;
+                }
+
+                // Check if similar pattern exists (to avoid duplicates, just a basic check)
+                const existing = await pool.query(
+                    'SELECT 1 FROM patterns WHERE area = $1 AND issue = $2 AND count = $3 AND blockchain_hash = $4',
+                    [area, issue, count, hash]
+                );
+
+                if (existing.rows.length === 0) {
+                    const result = await pool.query(
+                        'INSERT INTO patterns (issue, area, count, severity, blockchain_hash, nonce) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+                        [issue, area, count, count > 5 ? 'High' : 'Medium', hash, nonce]
+                    );
+                    generated.push(result.rows[0]);
+                }
+            }
+        }
+
+        res.json({
+            message: `Scanned ${complaints.length} complaints. Identified and mined ${generated.length} new Pattern Proofs.`,
+            count: generated.length,
+            patterns: generated
+        });
+    } catch (err) {
+        console.error('Pattern generation error:', err);
+        res.status(500).json({ error: 'Failed to generate pattern proofs' });
+    }
+});
 
 app.listen(port, () => {
     console.log(`Server running on port ${port} `);
