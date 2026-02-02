@@ -16,6 +16,7 @@
     "@mui/lab": "^7.0.1-beta.20",
     "@mui/material": "^7.3.6",
     "@mui/x-data-grid": "^8.22.1",
+    "@mui/x-date-pickers": "^8.26.0",
     "axios": "^1.13.2",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.23.26",

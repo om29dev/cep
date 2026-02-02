@@ -36,61 +36,7 @@ import {
 
 // ... (LocationResolver component remains unchanged)
 // Internal component to handle reverse geocoding
-const LocationResolver = ({ locationString, variant = "body2", showSkeleton = true }) => {
-    const [address, setAddress] = useState(null);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        if (!locationString) {
-            setAddress("Location Not Available");
-            setLoading(false);
-            return;
-        }
-
-        const fetchAddress = async () => {
-            // Basic coordinate regex: "lat, lng" or with parenthesis
-            // Cleanup string just in case
-            const cleanLoc = locationString.replace(/[()]/g, '');
-            const [lat, lng] = cleanLoc.split(',').map(s => s.trim());
-
-            if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
-                setAddress(locationString); // Fallback to raw string
-                setLoading(false);
-                return;
-            }
-
-            try {
-                // Using OpenStreetMap Nominatim API
-                const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14`);
-                const data = await response.json();
-
-                // Extract meaningful region name (Suburb > Neighborhood > District > City)
-                const addr = data.address || {};
-                const region = addr.suburb || addr.neighbourhood || addr.residential || addr.village || addr.town || addr.city_district || addr.city || "Unknown Region";
-
-                setAddress(region);
-            } catch (error) {
-                console.error("Geocoding failed", error);
-                setAddress(locationString); // Fallback
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        // Debounce/Delay slightly to avoid hammering API if many load at once
-        const timer = setTimeout(fetchAddress, Math.random() * 1000);
-        return () => clearTimeout(timer);
-    }, [locationString]);
-
-    if (loading && showSkeleton) return <Skeleton width={120} height={20} />;
-    if (loading) return <span>Loading...</span>;
-
-    return (
-        <Typography variant={variant} component="span" fontWeight={600} sx={{ textTransform: 'capitalize' }}>
-            {address}
-        </Typography>
-    );
-};
+// LocationResolver component removed as we now use explicit Area/Ward fields
 
 const OfficerComplaints = () => {
     const theme = useTheme();
@@ -182,13 +128,14 @@ const OfficerComplaints = () => {
             return;
         }
 
-        const headers = ["ID", "Category", "Description", "Location", "District", "Status", "Reported At"];
+        const headers = ["ID", "Category", "Description", "Location", "Area", "Ward", "Status", "Reported At"];
         const rows = filteredComplaints.map(c => [
             c.id,
             `"${c.category}"`, // Quote strings to handle commas
             `"${c.description.replace(/"/g, '""')}"`, // Escape quotes
             `"${c.location}"`,
-            `"${c.district || ''}"`,
+            `"${c.area || 'Unknown'}"`,
+            `"${c.ward || 'General'}"`,
             c.status,
             new Date(c.created_at).toLocaleString()
         ]);
@@ -205,11 +152,11 @@ const OfficerComplaints = () => {
     };
 
     const columns = [
-        { field: 'id', headerName: 'ID', width: 70 },
+        { field: 'id', headerName: 'ID', width: 50 },
         {
             field: 'category',
             headerName: 'Category',
-            width: 150,
+            width: 140,
             renderCell: (params) => (
                 <Chip
                     label={params.value.toUpperCase()}
@@ -223,22 +170,37 @@ const OfficerComplaints = () => {
             field: 'description',
             headerName: 'Description',
             flex: 1,
-            minWidth: 250,
+            minWidth: 200,
         },
         {
-            field: 'location',
-            headerName: 'Zone / Region', // Renamed header
-            width: 200,
-            renderCell: (params) => {
-                // Use the custom resolver component here
-                // We pass the raw location string which contains coordinates
-                return <LocationResolver locationString={params.row.location} />;
-            }
+            field: 'area',
+            headerName: 'Area',
+            width: 120,
+            align: 'center',
+            headerAlign: 'center',
+            renderCell: (params) => (
+                <Box display="flex" justifyContent="center" alignItems="center" width="100%" height="100%">
+                    <Typography variant="body2" fontWeight={600} noWrap>{params.value || 'Unknown'}</Typography>
+                </Box>
+            )
         },
+        {
+            field: 'ward',
+            headerName: 'Ward',
+            width: 80,
+            align: 'center',
+            headerAlign: 'center',
+            renderCell: (params) => (
+                <Box display="flex" justifyContent="center" alignItems="center" width="100%" height="100%">
+                    <Typography variant="body2" color="text.secondary" noWrap>{params.value || '-'}</Typography>
+                </Box>
+            )
+        },
+
         {
             field: 'status',
             headerName: 'Status',
-            width: 130,
+            width: 110,
             renderCell: (params) => (
                 <Chip
                     label={params.value.toUpperCase()}
@@ -257,22 +219,10 @@ const OfficerComplaints = () => {
         {
             field: 'created_at',
             headerName: 'Reported At',
-            width: 180,
-            valueFormatter: (value) => new Date(value).toLocaleString()
+            width: 160,
+            valueFormatter: (value) => new Date(value).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })
         },
-        {
-            field: 'actions',
-            type: 'actions',
-            headerName: 'Actions',
-            width: 100,
-            getActions: (params) => [
-                <GridActionsCellItem
-                    icon={<Eye size={18} />}
-                    label="View"
-                    onClick={() => setSelectedComplaint(params.row)}
-                />
-            ]
-        }
+
     ];
 
     const filteredComplaints = complaints.filter((c) =>
@@ -335,7 +285,7 @@ const OfficerComplaints = () => {
                 <Paper sx={{
                     height: 700,
                     width: '100%',
-                    borderRadius: 3,
+                    borderRadius: 0,
                     bgcolor: theme.palette.background.paper,
                     boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
                     overflow: 'hidden'
@@ -523,8 +473,11 @@ const OfficerComplaints = () => {
                                                     <Typography variant="caption" color="text.disabled">LOCATION / ZONE</Typography>
                                                     <Box display="flex" gap={1} alignItems="center">
                                                         <MapPin size={16} color={theme.palette.primary.main} />
-                                                        {/* Use the resolver here too for consistency */}
-                                                        <LocationResolver locationString={selectedComplaint.location} />
+                                                        <Box>
+                                                            <Typography variant="body2" fontWeight={700}>
+                                                                {selectedComplaint.area || 'Unknown Area'} (Ward {selectedComplaint.ward || '-'})
+                                                            </Typography>
+                                                        </Box>
                                                     </Box>
                                                     <Typography variant="caption" fontFamily="monospace" sx={{ ml: 3, opacity: 0.7 }}>
                                                         Coordinates: {selectedComplaint.location}

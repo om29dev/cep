@@ -49,7 +49,7 @@ const ProblemSection = () => {
                     sx={{ color: 'text.secondary', mb: 8, maxWidth: '800px', mx: 'auto' }}
                 >
                     Existing systems fail to represent the collective urgency of community issues.
-                    UIIS bridges this gap with structured, evidence-based data.
+                    The Urban Water Intelligence System (UIIS) bridges this gap with structured, evidence-based data.
                 </Typography>
 
                 <Grid container spacing={4}>

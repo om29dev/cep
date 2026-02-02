@@ -21,8 +21,15 @@ import {
     IconButton,
     CircularProgress,
     Tooltip,
-    Badge
+    Badge,
+    Select,
+    MenuItem,
+    TextField
 } from '@mui/material';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { PickersDay } from '@mui/x-date-pickers/PickersDay';
 import { DataGrid } from '@mui/x-data-grid';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell,
@@ -97,56 +104,7 @@ const AutoRecenterMap = ({ complaints, getPosition }) => {
     return null;
 };
 
-// Internal component to handle reverse geocoding (Adapted for Dashboard)
-const LocationResolver = ({ locationString, district, variant = "subtitle2" }) => {
-    const [address, setAddress] = useState(district || null);
-
-    useEffect(() => {
-        // If we already have a blockchain-verified district, use it.
-        if (district) {
-            setAddress(district);
-            return;
-        }
-
-        if (!locationString) {
-            setAddress("Location N/A");
-            return;
-        }
-
-        const fetchAddress = async () => {
-            const cleanLoc = locationString.replace(/[()]/g, '');
-            const [lat, lng] = cleanLoc.split(',').map(s => s.trim());
-
-            if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
-                setAddress(locationString);
-                return;
-            }
-
-            try {
-                // Using OpenStreetMap Nominatim API
-                const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14`);
-                const data = await response.json();
-
-                const addr = data.address || {};
-                // Prioritize District/Area names
-                const region = addr.city_district || addr.suburb || addr.neighbourhood || addr.town || addr.city || "Unknown Region";
-                setAddress(region);
-            } catch (error) {
-                setAddress(locationString);
-            }
-        };
-
-        // Small delay to prevent rate limiting if many markers load
-        const timer = setTimeout(fetchAddress, Math.random() * 1000 + 500);
-        return () => clearTimeout(timer);
-    }, [locationString, district]);
-
-    return (
-        <Typography variant={variant} fontWeight={800} sx={{ textTransform: 'capitalize' }}>
-            {address || "Loading..."}
-        </Typography>
-    );
-};
+// LocationResolver removed - using backend provided Area/Ward
 
 const StatCard = ({ title, value, icon: Icon, color, trend, compact }) => {
     const theme = useTheme();
@@ -212,6 +170,10 @@ const DashboardPreview = () => {
     const theme = useTheme();
     const navigate = useNavigate();
     const [complaints, setComplaints] = useState([]);
+    const [selectedDateFilter, setSelectedDateFilter] = useState(null); // Changed to null for 'All' or Date object
+    const [selectedArea, setSelectedArea] = useState(null);
+    const [selectedTime, setSelectedTime] = useState(null);
+    const [mapModalOpen, setMapModalOpen] = useState(false);
 
     const [loading, setLoading] = useState(true);
     const [selectedComplaint, setSelectedComplaint] = useState(null);
@@ -295,7 +257,6 @@ const DashboardPreview = () => {
             const currentPos = getPosition(current.location);
             const newCluster = {
                 id: `zone-${clusters.length + 1}`,
-                name: `Issue ${clusters.length + 1}`,
                 center: currentPos,
                 count: 1,
                 complaints: [current]
@@ -313,6 +274,20 @@ const DashboardPreview = () => {
                     }
                 }
             });
+
+            // Generate Smart Name
+            const categories = {};
+            const areas = {};
+            newCluster.complaints.forEach(c => {
+                categories[c.category] = (categories[c.category] || 0) + 1;
+                areas[c.area || 'Unknown'] = (areas[c.area || 'Unknown'] || 0) + 1;
+            });
+
+            const topCategory = Object.keys(categories).reduce((a, b) => categories[a] > categories[b] ? a : b);
+            const topArea = Object.keys(areas).reduce((a, b) => areas[a] > areas[b] ? a : b);
+
+            newCluster.name = `${topCategory} in ${topArea}`;
+
             clusters.push(newCluster);
         });
         return clusters.sort((a, b) => b.count - a.count);
@@ -331,7 +306,7 @@ const DashboardPreview = () => {
     const districtData = useMemo(() => {
         const counts = {};
         activeComplaints.forEach(c => {
-            const d = c.district || 'Unmapped Zone';
+            const d = c.area || 'Unmapped Zone';
             counts[d] = (counts[d] || 0) + 1;
         });
         return Object.keys(counts)
@@ -339,26 +314,122 @@ const DashboardPreview = () => {
             .sort((a, b) => b.count - a.count);
     }, [activeComplaints]);
 
+    // Available Dates for Dropdown
+    const availableDates = useMemo(() => {
+        const dates = new Set(['All']);
+        activeComplaints.forEach(c => {
+            if (c.created_at) {
+                dates.add(new Date(c.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' }));
+            }
+        });
+        return Array.from(dates);
+    }, [activeComplaints]);
+
     // Data for Time Analysis (Complaints per Hour)
     const timeData = useMemo(() => {
         const counts = {};
         activeComplaints.forEach(c => {
             if (!c.created_at) return;
-            const hour = new Date(c.created_at).getHours();
-            // Format hour as "10 AM", "2 PM"
-            const label = hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`;
-            counts[label] = (counts[label] || 0) + 1;
+            const dateObj = new Date(c.created_at);
+            const date = dateObj.toLocaleDateString([], { month: 'short', day: 'numeric' });
+
+            // Filter Logic
+            if (selectedDateFilter) {
+                const filterDateStr = selectedDateFilter.toLocaleDateString();
+                const itemDateStr = dateObj.toLocaleDateString();
+                if (filterDateStr !== itemDateStr) return;
+            }
+
+            const hour = dateObj.getHours();
+            const time = hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`;
+
+            // If viewing all, show date + time. If viewing specific date, show just time.
+            const label = !selectedDateFilter ? `${date}, ${time}` : time;
+
+            // Store timestamp for sorting
+            if (!counts[label]) {
+                counts[label] = { count: 0, time: dateObj.getTime() };
+            }
+            counts[label].count += 1;
         });
 
-        // Ensure chronological order if possible, or just by key existence for now
-        // For simplicity, let's just map existing data. 
-        // Ideally we fill 0 for missing hours, but let's just show active hours.
-        return Object.keys(counts).map(key => ({ name: key, count: counts[key] }));
-    }, [activeComplaints]);
+        // Convert to array and sort by timestamp
+        return Object.keys(counts)
+            .map(key => ({ name: key, count: counts[key].count, time: counts[key].time }))
+            .sort((a, b) => a.time - b.time);
+    }, [activeComplaints, selectedDateFilter]);
+
 
 
 
     const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
+
+    // Calendar Date Status Map
+    const dateStatusMap = useMemo(() => {
+        const statusMap = {};
+        complaints.forEach(c => {
+            if (!c.created_at) return;
+            const dateStr = new Date(c.created_at).toDateString(); // Key by standard date string
+            if (!statusMap[dateStr]) statusMap[dateStr] = { hasActive: false, hasResolved: false };
+
+            if (c.status === 'resolved') {
+                statusMap[dateStr].hasResolved = true;
+            } else {
+                statusMap[dateStr].hasActive = true;
+            }
+        });
+        return statusMap;
+    }, [complaints]);
+
+    const CustomPickersDay = (props) => {
+        const { day, outsideCurrentMonth, ...other } = props;
+        const dateStr = day.toDateString();
+        const status = dateStatusMap[dateStr];
+
+        let badgeContent = undefined;
+        let badgeColor = 'transparent';
+
+        if (status) {
+            if (status.hasActive) {
+                badgeColor = '#f43f5e'; // Red for active issues
+            } else if (status.hasResolved) {
+                badgeColor = '#10b981'; // Green for all resolved
+            }
+        }
+
+        const isSelected = !outsideCurrentMonth && selectedDateFilter && selectedDateFilter.toDateString() === dateStr;
+
+        return (
+            <Badge
+                key={props.day.toString()}
+                overlap="circular"
+                badgeContent={!outsideCurrentMonth && status ? ' ' : undefined}
+                sx={{
+                    '& .MuiBadge-badge': {
+                        backgroundColor: badgeColor,
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        bottom: 5,
+                        right: 5,
+                        top: 'unset'
+                    }
+                }}
+            >
+                <PickersDay
+                    {...other}
+                    outsideCurrentMonth={outsideCurrentMonth}
+                    day={day}
+                    sx={{
+                        ...(isSelected && {
+                            bgcolor: theme.palette.primary.main + ' !important',
+                            color: '#fff'
+                        })
+                    }}
+                />
+            </Badge>
+        );
+    };
 
     return (
         <Box sx={{
@@ -462,7 +533,10 @@ const DashboardPreview = () => {
                                         }
                                         attribution='&copy; OpenStreetMap'
                                     />
-                                    <AutoRecenterMap complaints={activeComplaints} getPosition={getPosition} />
+                                    <AutoRecenterMap
+                                        complaints={activeComplaints}
+                                        getPosition={getPosition}
+                                    />
 
                                     {/* Render Clusters */}
                                     {clusterData.map((cluster) => (
@@ -482,18 +556,25 @@ const DashboardPreview = () => {
 
                                     {/* Render Individual Markers */}
                                     {activeComplaints.map((complaint) => {
+
                                         const pos = getPosition(complaint.location);
                                         if (!pos) return null;
                                         return (
-                                            <Marker key={complaint.id} position={pos}>
+                                            <Marker
+                                                key={complaint.id}
+                                                position={pos}
+                                                eventHandlers={{
+                                                    click: () => setSelectedComplaint(complaint)
+                                                }}
+                                            >
                                                 <Popup>
-                                                    <Box sx={{ p: 1 }}>
+                                                    <Box sx={{ p: 1, cursor: 'pointer' }} onClick={() => setSelectedComplaint(complaint)}>
                                                         <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
                                                             <Chip
                                                                 label={complaint.category.toUpperCase()}
                                                                 size="small"
                                                                 color={complaint.ai_urgency === 'Emergency' ? 'error' : 'primary'}
-                                                                sx={{ fontSize: '10px', height: 20 }}
+                                                                sx={{ fontSize: '10px', height: 20, borderRadius: 0 }}
                                                             />
                                                             {complaint.ai_urgency && (
                                                                 <Typography variant="caption" sx={{ color: complaint.ai_urgency === 'Emergency' ? '#ef4444' : 'text.secondary', fontWeight: 700 }}>
@@ -501,15 +582,20 @@ const DashboardPreview = () => {
                                                                 </Typography>
                                                             )}
                                                         </Box>
-                                                        <LocationResolver
-                                                            locationString={complaint.location}
-                                                            district={complaint.district}
-                                                        />
+                                                        <Typography variant="subtitle2" fontWeight={600} sx={{ textTransform: 'capitalize' }}>
+                                                            {complaint.area || "Unknown Area"}
+                                                        </Typography>
+                                                        <Typography variant="caption" display="block" color="text.secondary" gutterBottom>
+                                                            Ward: {complaint.ward || "General"}
+                                                        </Typography>
                                                         <Typography variant="body2" sx={{ mt: 1, mb: 1, color: 'text.secondary', fontSize: '0.75rem' }}>
                                                             {complaint.description.substring(0, 80)}...
                                                         </Typography>
                                                         <Typography variant="caption" display="block" sx={{ mb: 1, opacity: 0.8 }}>
                                                             {new Date(complaint.created_at).toLocaleDateString()}
+                                                        </Typography>
+                                                        <Typography variant="caption" color="primary" sx={{ display: 'block', mt: 1, fontWeight: 700 }}>
+                                                            CLICK TO VIEW DETAILS
                                                         </Typography>
                                                     </Box>
                                                 </Popup>
@@ -555,20 +641,24 @@ const DashboardPreview = () => {
                                 <Box sx={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', flex: 1 }}>
                                     {activeComplaints.map((complaint, index) => (
                                         <Box key={complaint.id}
-                                            // Disabled Click
+                                            onClick={() => setSelectedComplaint(complaint)}
                                             sx={{
                                                 p: 2,
                                                 borderBottom: `1px solid ${theme.palette.divider}`,
-                                                // Removed cursor pointer and hover effect
+                                                cursor: 'pointer',
                                                 display: 'flex',
-                                                gap: 2
+                                                gap: 2,
+                                                transition: 'background-color 0.2s',
+                                                '&:hover': {
+                                                    bgcolor: theme.palette.action.hover
+                                                }
                                             }}
                                         >
                                             <Box sx={{ pt: 0.5 }}>
                                                 <div style={{
                                                     width: 8,
                                                     height: 8,
-                                                    borderRadius: '50%',
+                                                    borderRadius: '50%', // Keep status dot circular unless specifically asked to be square
                                                     backgroundColor: complaint.ai_urgency === 'Emergency' ? '#ef4444' : (complaint.ai_urgency === 'High' ? '#f59e0b' : '#3b82f6'),
                                                     boxShadow: `0 0 8px ${complaint.ai_urgency === 'Emergency' ? '#ef4444' : (complaint.ai_urgency === 'High' ? '#f59e0b' : '#3b82f6')}`
                                                 }} />
@@ -589,7 +679,8 @@ const DashboardPreview = () => {
                                                                     fontSize: '8px',
                                                                     fontWeight: 800,
                                                                     borderColor: complaint.ai_urgency === 'Emergency' ? '#ef4444' : 'divider',
-                                                                    color: complaint.ai_urgency === 'Emergency' ? '#ef4444' : 'text.secondary'
+                                                                    color: complaint.ai_urgency === 'Emergency' ? '#ef4444' : 'text.secondary',
+                                                                    borderRadius: 0
                                                                 }}
                                                             />
                                                         )}
@@ -603,11 +694,9 @@ const DashboardPreview = () => {
                                                 </Typography>
                                                 <Box display="flex" alignItems="center" gap={0.5}>
                                                     <MapIcon size={12} style={{ opacity: 0.5 }} />
-                                                    <LocationResolver
-                                                        locationString={complaint.location}
-                                                        district={complaint.district}
-                                                        variant="caption"
-                                                    />
+                                                    <Typography variant="caption" fontWeight={600} sx={{ textTransform: 'capitalize' }}>
+                                                        {complaint.area || 'Unknown'} {complaint.ward ? `(${complaint.ward})` : ''}
+                                                    </Typography>
                                                 </Box>
                                             </Box>
                                         </Box>
@@ -681,13 +770,13 @@ const DashboardPreview = () => {
                         }}>
                             <Typography variant="h6" fontWeight={800} gutterBottom display="flex" alignItems="center" gap={1.5}>
                                 <Box sx={{ width: 4, height: 20, bgcolor: 'secondary.main', borderRadius: 2 }} />
-                                Major Issues
+                                High Density Clusters
                             </Typography>
                             <ResponsiveContainer width="100%" height="90%">
                                 <BarChart data={clusterData.slice(0, 5)} layout="vertical" margin={{ left: 10 }}>
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                                     <XAxis type="number" hide />
-                                    <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 11, fontWeight: 600 }} axisLine={false} tickLine={false} />
+                                    <YAxis dataKey="name" type="category" width={110} tick={{ fontSize: 10, fontWeight: 600 }} axisLine={false} tickLine={false} />
                                     <RechartsTooltip cursor={{ fill: theme.palette.action.hover }} />
                                     <Bar
                                         dataKey="count"
@@ -711,7 +800,7 @@ const DashboardPreview = () => {
                     </Grid>
 
                     {/* ROW 3: ZONE & TIME ANALYSIS */}
-                    <Grid size={{ xs: 12, md: 8 }}>
+                    <Grid size={{ xs: 12, md: 6 }}>
                         <Paper sx={{
                             p: 3,
                             borderRadius: 0,
@@ -720,10 +809,12 @@ const DashboardPreview = () => {
                             border: `1px solid ${theme.palette.divider}`,
                             boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
                         }}>
-                            <Typography variant="h6" fontWeight={800} gutterBottom display="flex" alignItems="center" gap={1.5}>
-                                <Box sx={{ width: 4, height: 20, bgcolor: '#10b981', borderRadius: 2 }} />
-                                Regional Zone Intensity
-                            </Typography>
+                            <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                                <Typography variant="h6" fontWeight={800} display="flex" alignItems="center" gap={1.5}>
+                                    <Box sx={{ width: 4, height: 20, bgcolor: '#10b981', borderRadius: 2 }} />
+                                    Regional Zone Intensity
+                                </Typography>
+                            </Box>
                             <ResponsiveContainer width="100%" height="85%">
                                 <BarChart data={districtData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme.palette.divider} />
@@ -737,9 +828,23 @@ const DashboardPreview = () => {
                                             borderRadius: '8px'
                                         }}
                                     />
-                                    <Bar dataKey="count" fill="#10b981" radius={[4, 4, 0, 0]} barSize={50}>
+                                    <Bar
+                                        dataKey="count"
+                                        radius={[4, 4, 0, 0]}
+                                        barSize={50}
+                                        onClick={(data) => {
+                                            setSelectedArea(data.name);
+                                            setMapModalOpen(true);
+                                        }}
+                                        style={{ cursor: 'pointer' }}
+                                    >
                                         {districtData.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={['#10b981', '#34d399', '#6ee7b7'][index % 3]} />
+                                            <Cell
+                                                key={`cell-${index}`}
+                                                fill={selectedArea && selectedArea === entry.name ? '#f59e0b' : selectedArea ? `${['#10b981', '#34d399', '#6ee7b7'][index % 3]}50` : ['#10b981', '#34d399', '#6ee7b7'][index % 3]}
+                                                stroke={selectedArea === entry.name ? '#fff' : 'none'}
+                                                strokeWidth={2}
+                                            />
                                         ))}
                                     </Bar>
                                 </BarChart>
@@ -747,7 +852,7 @@ const DashboardPreview = () => {
                         </Paper>
                     </Grid>
 
-                    <Grid size={{ xs: 12, md: 4 }}>
+                    <Grid size={{ xs: 12, md: 6 }}>
                         <Paper sx={{
                             p: 3,
                             borderRadius: 0,
@@ -756,10 +861,52 @@ const DashboardPreview = () => {
                             border: `1px solid ${theme.palette.divider}`,
                             boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
                         }}>
-                            <Typography variant="h6" fontWeight={800} gutterBottom display="flex" alignItems="center" gap={1.5}>
-                                <Box sx={{ width: 4, height: 20, bgcolor: '#f43f5e', borderRadius: 2 }} />
-                                Temporal Surge
-                            </Typography>
+                            <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                                <Typography variant="h6" fontWeight={800} display="flex" alignItems="center" gap={1.5}>
+                                    <Box sx={{ width: 4, height: 20, bgcolor: '#f43f5e', borderRadius: 2 }} />
+                                    Temporal Surge
+                                </Typography>
+                                <Box sx={{ width: 150 }}>
+                                    <LocalizationProvider dateAdapter={AdapterDateFns}>
+                                        <DatePicker
+                                            label="Filter Date"
+                                            value={selectedDateFilter}
+                                            onChange={(newValue) => setSelectedDateFilter(newValue)}
+                                            slotProps={{
+                                                day: {
+                                                    // Pass any extra props if needed or just let the slot handle it
+                                                },
+                                                textField: {
+                                                    size: 'small',
+                                                    variant: 'outlined',
+                                                    sx: {
+                                                        '& .MuiInputBase-root': {
+                                                            height: 32,
+                                                            fontSize: '0.85rem',
+                                                            fontWeight: 600,
+                                                            bgcolor: theme.palette.action.hover,
+                                                            borderRadius: 2,
+                                                            '& fieldset': { border: `1px solid ${theme.palette.divider}` },
+                                                            '&:hover fieldset': { borderColor: '#f43f5e' },
+                                                            '&.Mui-focused fieldset': { borderColor: '#f43f5e' }
+                                                        },
+                                                        '& .MuiInputLabel-root': {
+                                                            top: -4,
+                                                            fontSize: '0.85rem',
+                                                        }
+                                                    }
+                                                },
+                                                actionBar: {
+                                                    actions: ['clear']
+                                                }
+                                            }}
+                                            slots={{
+                                                day: CustomPickersDay
+                                            }}
+                                        />
+                                    </LocalizationProvider>
+                                </Box>
+                            </Box>
                             <ResponsiveContainer width="100%" height="85%">
                                 <BarChart data={timeData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme.palette.divider} />
@@ -773,7 +920,24 @@ const DashboardPreview = () => {
                                             borderRadius: '8px'
                                         }}
                                     />
-                                    <Bar dataKey="count" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={30} />
+                                    <Bar
+                                        dataKey="count"
+                                        radius={[4, 4, 0, 0]}
+                                        barSize={30}
+                                        style={{ cursor: 'pointer' }}
+                                        onClick={(data) => {
+                                            setSelectedTime(data.name);
+                                            setSelectedArea(null); // Clear area selection to avoid conflict
+                                            setMapModalOpen(true);
+                                        }}
+                                    >
+                                        {timeData.map((entry, index) => (
+                                            <Cell
+                                                key={`cell-${index}`}
+                                                fill={selectedTime === entry.name ? '#f59e0b' : '#f43f5e'}
+                                            />
+                                        ))}
+                                    </Bar>
                                 </BarChart>
                             </ResponsiveContainer>
                         </Paper>
@@ -796,11 +960,7 @@ const DashboardPreview = () => {
                                         <Typography variant="caption" color="text.secondary">ISSUE ID: #{selectedComplaint.id}</Typography>
                                         <Typography variant="h6" fontWeight={800}>{selectedComplaint.category.toUpperCase()} ALERT</Typography>
                                     </Box>
-                                    <Chip
-                                        label={selectedComplaint.status.toUpperCase()}
-                                        color={selectedComplaint.status === 'resolved' ? "success" : "warning"}
-                                        sx={{ fontWeight: 800 }}
-                                    />
+
                                 </Box>
                             </DialogTitle>
                             <DialogContent sx={{ px: 3, pt: 2 }}>
@@ -816,7 +976,7 @@ const DashboardPreview = () => {
                                             <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ mb: 1, display: 'block' }}>JURISDICTION</Typography>
                                             <Stack direction="row" spacing={1} flexWrap="wrap">
                                                 <Chip
-                                                    label={`Area: ${selectedComplaint.district || "Unknown Area"}`}
+                                                    label={`Area: ${selectedComplaint.area || "Unknown Area"}`}
                                                     variant="outlined"
                                                     sx={{
                                                         borderColor: '#3b82f6',
@@ -830,11 +990,9 @@ const DashboardPreview = () => {
                                         <Divider orientation="vertical" flexItem />
                                         <Box flex={1}>
                                             <Typography variant="caption" color="text.secondary" fontWeight={700}>PRECISE LOCATION</Typography>
-                                            <LocationResolver
-                                                locationString={selectedComplaint.location}
-                                                district={null} // Force resolve coordinates
-                                                variant="body2"
-                                            />
+                                            <Typography variant="body2" fontWeight={700} sx={{ textTransform: 'capitalize' }}>
+                                                {selectedComplaint.ward ? `Ward: ${selectedComplaint.ward}` : "Ward Unidentified"}
+                                            </Typography>
                                             <Button
                                                 variant="text"
                                                 size="small"
@@ -878,6 +1036,83 @@ const DashboardPreview = () => {
                             </DialogActions>
                         </>
                     )}
+                </Dialog>
+
+                {/* REGION MAP MODAL */}
+                <Dialog
+                    open={mapModalOpen}
+                    onClose={() => setMapModalOpen(false)}
+                    maxWidth="md"
+                    fullWidth
+                    PaperProps={{ sx: { borderRadius: 0, height: '600px' } }}
+                >
+                    <DialogTitle sx={{ px: 3, pt: 3 }}>
+                        <Box display="flex" justifyContent="space-between" alignItems="center">
+                            <Typography variant="h6" fontWeight={800}>
+                                {selectedArea ? `${selectedArea.toUpperCase()} ZONE ANALYSIS` : selectedTime ? `TIME SNAPSHOT: ${selectedTime}` : "REGIONAL ANALYSIS"}
+                            </Typography>
+                            <Button onClick={() => setMapModalOpen(false)} color="inherit">Close</Button>
+                        </Box>
+                    </DialogTitle>
+                    <DialogContent sx={{ p: 0, '&:first-of-type': { p: 0 } }}>
+                        <Box sx={{ height: '100%', width: '100%', position: 'relative' }}>
+                            <MapContainer
+                                center={[18.6298, 73.7997]}
+                                zoom={15}
+                                style={{ height: "100%", width: "100%" }}
+                                zoomControl={false}
+                            >
+                                <TileLayer
+                                    url={theme.palette.mode === 'dark'
+                                        ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                                        : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+                                    }
+                                    attribution='&copy; OpenStreetMap'
+                                />
+                                {/* Filtered Map Logic */}
+                                <AutoRecenterMap
+                                    complaints={
+                                        selectedArea ? activeComplaints.filter(c => c.area === selectedArea) :
+                                            selectedTime ? activeComplaints.filter(c => {
+                                                if (!c.created_at) return false;
+                                                const dateObj = new Date(c.created_at);
+                                                const date = dateObj.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                                                const hour = dateObj.getHours();
+                                                const time = hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`;
+                                                const label = !selectedDateFilter ? `${date}, ${time}` : time;
+                                                return label === selectedTime;
+                                            }) : activeComplaints
+                                    }
+                                    getPosition={getPosition}
+                                />
+                                {activeComplaints.map((complaint) => {
+                                    // Map Filter Logic
+                                    if (selectedArea && complaint.area !== selectedArea) return null;
+
+                                    if (selectedTime && !selectedArea) {
+                                        if (!complaint.created_at) return null;
+                                        const dateObj = new Date(complaint.created_at);
+                                        const date = dateObj.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                                        const hour = dateObj.getHours();
+                                        const time = hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`;
+                                        const label = !selectedDateFilter ? `${date}, ${time}` : time;
+                                        if (label !== selectedTime) return null;
+                                    }
+
+                                    const pos = getPosition(complaint.location);
+                                    if (!pos) return null;
+                                    return (
+                                        <Marker key={complaint.id} position={pos}>
+                                            <Popup>
+                                                <Typography variant="subtitle2">{complaint.category}</Typography>
+                                                <Typography variant="caption">{complaint.description}</Typography>
+                                            </Popup>
+                                        </Marker>
+                                    );
+                                })}
+                            </MapContainer>
+                        </Box>
+                    </DialogContent>
                 </Dialog>
             </Container >
         </Box >

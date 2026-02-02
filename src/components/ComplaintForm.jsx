@@ -53,7 +53,8 @@ const ComplaintForm = () => {
         location: '',
         description: '',
         images: [],
-        district: ''
+        area: '',
+        ward: ''
     });
     const [status, setStatus] = useState('idle'); // idle, locating, submitting, success
     const [locationError, setLocationError] = useState(null);
@@ -67,27 +68,25 @@ const ComplaintForm = () => {
 
     const fetchJurisdiction = async (lat, lon) => {
         try {
+            // Replaced external Nominatim call with internal GIS lookup
             const response = await axios.get(
-                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`,
-                { withCredentials: false }
+                `/api/gis/identify-area?lat=${lat}&lng=${lon}`
             );
-            const address = response.data.address;
-
-            // Strict Area/District Extraction
-            const areaName = address.city_district || address.district || address.city || address.town || address.county || 'Unknown Area';
+            const { area, ward } = response.data;
 
             setFormData(prev => ({
                 ...prev,
                 location: `${lat}, ${lon}`,
-                // Store the name in 'district' just for UI display as "Area"
-                district: areaName
+                area: area,
+                ward: ward
             }));
         } catch (error) {
             console.error("Jurisdiction fetch error:", error);
             setFormData(prev => ({
                 ...prev,
                 location: `${lat}, ${lon}`,
-                district: "Unknown Area"
+                area: "Unknown Area",
+                ward: "General"
             }));
         }
     };
@@ -161,7 +160,8 @@ const ComplaintForm = () => {
             const data = new FormData();
             data.append('location', formData.location);
             data.append('description', formData.description);
-            data.append('district', formData.district);
+            data.append('area', formData.area || 'Unknown');
+            data.append('ward', formData.ward || 'General');
             formData.images.forEach(img => {
                 data.append('images', img.file);
             });
@@ -178,7 +178,8 @@ const ComplaintForm = () => {
                     location: '',
                     description: '',
                     images: [],
-                    district: ''
+                    area: '',
+                    ward: ''
                 });
                 setTempPosition(null);
             } else {
@@ -338,7 +339,7 @@ const ComplaintForm = () => {
                                                 >
                                                     <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
                                                         <Chip
-                                                            label={`Area: ${formData.district || 'Detecting...'}`}
+                                                            label={`Area: ${formData.area || 'Detecting...'} (Ward: ${formData.ward || '-'})`}
                                                             size="small"
                                                             sx={{ borderRadius: '6px', background: 'rgba(0, 210, 255, 0.1)', color: '#00D2FF', border: '1px solid rgba(0, 210, 255, 0.2)' }}
                                                         />

@@ -34,7 +34,12 @@ const Footer = () => {
                     <Grid size={{ xs: 12, md: 4 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                             <Droplets size={24} color="#00D2FF" style={{ marginRight: 8 }} />
-                            <Typography variant="h6" sx={{ fontFamily: 'Outfit', fontWeight: 800 }}>UIIS</Typography>
+                            <Box>
+                                <Typography variant="h6" sx={{ fontFamily: 'Outfit', fontWeight: 800, lineHeight: 1.1 }}>UIIS</Typography>
+                                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
+                                    Urban Water Intelligence System
+                                </Typography>
+                            </Box>
                         </Box>
                         <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 300 }}>
                             Aggregating urban water data for a smarter, more resilient future.
@@ -112,7 +117,7 @@ const Footer = () => {
 
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
                     <Typography variant="caption" color="text.secondary">
-                        © 2025 UIIS | Urban Water Intelligence System.
+                        © 2025 UIIS - Urban Water Intelligence System. All rights reserved.
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
                         Data-Driven Insights for Water Resilience

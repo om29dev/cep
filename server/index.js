@@ -17,9 +17,15 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 5000;
 
+// Security Check: Fail if JWT_SECRET is missing in production
+if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
+    throw new Error("FATAL: JWT_SECRET is missing in environment variables. Server cannot start securely.");
+}
+const JWT_SECRET_KEY = process.env.JWT_SECRET || 'dev_secret_key_do_not_use_in_production';
+
 // Middleware
 app.use(cors({
-    origin: 'http://localhost:5173', // Frontend URL
+    origin: process.env.CLIENT_URL || 'http://localhost:5173', // Configurable Origin
     credentials: true
 }));
 app.use(express.json());
@@ -57,7 +63,7 @@ const verifyToken = (req, res, next) => {
     if (!token) return res.status(401).json({ error: 'Access Denied' });
 
     try {
-        const verified = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+        const verified = jwt.verify(token, JWT_SECRET_KEY);
         req.user = verified;
         next();
     } catch (err) {
@@ -98,9 +104,6 @@ const predictCategory = (description) => {
     if (desc.includes('drain') || desc.includes('sewage') || desc.includes('sewer') || desc.includes('overflow') || desc.includes('blockage')) {
         return 'Drainage & Sewage';
     }
-    if (desc.includes('illegal') || desc.includes('theft') || desc.includes('direct connection')) {
-        return 'Illegal Connection';
-    }
 
     return 'Other Water Issue';
 };
@@ -112,6 +115,7 @@ const initDb = async () => {
     try {
         // 1. Create Tables safely (IF NOT EXISTS)
         await pool.query(`
+
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 username TEXT UNIQUE NOT NULL,
@@ -130,16 +134,15 @@ const initDb = async () => {
                 description TEXT NOT NULL,
                 images JSONB DEFAULT '[]',
                 status TEXT DEFAULT 'pending',
-                district TEXT,
+                area TEXT,
+                ward TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 resolved_at TIMESTAMP,
                 resolution_remarks TEXT,
                 resolution_images JSONB DEFAULT '[]',
                 hash TEXT,
                 previous_hash TEXT,
-                ai_summary TEXT,
                 ai_urgency TEXT,
-                ai_sentiment TEXT,
                 nonce INTEGER DEFAULT 0
             );
 
@@ -150,18 +153,7 @@ const initDb = async () => {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
-
-
-            ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE;
         `);
-
-        // Check for specific columns (Migrations for older DBs if mostly preserving info, 
-        // though we just did a hard reset so this might be redundant but safe)
-        // (Skipping complex migration logic as we know we just reset, but keeping it simple is best)
-
-        // Seeding removed as per request
-        console.log('Database initialized.');
-
         console.log('Database initialized.');
     } catch (err) {
         console.error('Error initializing database:', err);
@@ -171,7 +163,6 @@ const initDb = async () => {
 // Call initDb on start
 initDb();
 
-// ... existing code ...
 
 // EMAIL CONFIGURATION
 const transporter = nodemailer.createTransport({
@@ -190,6 +181,9 @@ app.post('/api/auth/send-otp', async (req, res) => {
         // Generate 6-digit OTP
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
+        // Cleanup: Remove OTPs older than 15 minutes to keep DB clean
+        await pool.query("DELETE FROM otp_verifications WHERE created_at < NOW() - INTERVAL '15 minutes'");
+
         // Save to DB
         await pool.query('INSERT INTO otp_verifications (email, otp) VALUES ($1, $2)', [email, otp]);
 
@@ -197,11 +191,11 @@ app.post('/api/auth/send-otp', async (req, res) => {
         const mailOptions = {
             from: process.env.EMAIL_USER,
             to: email,
-            subject: 'Your Verification Code - UIIS',
+            subject: 'Your Verification Code - UIIS (Urban Water Intelligence System)',
             text: `Your verification code is: ${otp}. It is valid for 10 minutes.`,
             html: `
                 <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
-                    <h2 style="color: #2563eb;">UIIS Verification</h2>
+                    <h2 style="color: #2563eb;">UIIS - Urban Water Intelligence System</h2>
                     <p>Your One-Time Password (OTP) for registration is:</p>
                     <h1 style="background: #f3f4f6; padding: 10px 20px; display: inline-block; border-radius: 8px; letter-spacing: 5px;">${otp}</h1>
                     <p>Please enter this code to complete your registration.</p>
@@ -238,7 +232,14 @@ app.post('/api/auth/verify-otp', async (req, res) => {
             return res.status(400).json({ error: 'Invalid OTP' });
         }
 
-        // Optional: Expiry check (e.g., 5 mins)
+        // OTP Expiry Check (10 minutes)
+        const otpTime = new Date(result.rows[0].created_at).getTime();
+        const currentTime = Date.now();
+        const timeDiff = (currentTime - otpTime) / 1000 / 60; // in minutes
+
+        if (timeDiff > 10) {
+            return res.status(400).json({ error: 'OTP Expired. Please request a new one.' });
+        }
 
         res.json({ message: 'OTP verified successfully' });
     } catch (err) {
@@ -267,7 +268,7 @@ app.post('/api/auth/register', async (req, res) => {
         );
 
         const user = result.rows[0];
-        const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET || 'secret', { expiresIn: '1d' });
+        const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET_KEY, { expiresIn: '1d' });
 
         res.cookie('token', token, { httpOnly: true });
         res.status(201).json(user);
@@ -298,7 +299,7 @@ app.post('/api/auth/login', async (req, res) => {
             return res.status(403).json({ error: 'Your account has been suspended. Please contact the administrator.' });
         }
 
-        const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET || 'secret', { expiresIn: '1d' });
+        const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET_KEY, { expiresIn: '1d' });
 
         res.cookie('token', token, { httpOnly: true });
         res.json({ id: user.id, username: user.username, full_name: user.full_name, email: user.email, role: user.role });
@@ -328,11 +329,18 @@ app.post('/api/auth/logout', (req, res) => {
 
 // Complaint Routes
 app.post('/api/complaints', verifyToken, checkRole(['citizen']), upload.array('images'), async (req, res) => {
+    const client = await pool.connect(); // Use a client for Transaction
     try {
-        const { location, description, district } = req.body;
+        const { location, description, area, ward } = req.body;
 
         // AI: Intelligent Analysis
-        const aiAnalysis = await analyzeComplaint(description);
+        let aiAnalysis;
+        try {
+            aiAnalysis = await analyzeComplaint(description);
+        } catch (error) {
+            console.error("AI Analysis Failed:", error);
+            aiAnalysis = { category: predictCategory(description), is_spam: false, urgency: 'Medium' };
+        }
 
         // Fallback to heuristic if AI fails or key is missing
         const category = aiAnalysis?.category || predictCategory(description);
@@ -346,25 +354,31 @@ app.post('/api/complaints', verifyToken, checkRole(['citizen']), upload.array('i
         }
 
         const ai_urgency = aiAnalysis?.urgency || 'Medium';
-        const ai_sentiment = aiAnalysis?.sentiment || 'Neutral';
 
         const imagePaths = req.files.map(file => file.filename);
 
+        // --- BLOCKCHAIN TRANSACTION START ---
+        await client.query('BEGIN');
+        // Lock the table (IN EXCLUSIVE MODE to prevent concurrent writes causing forks)
+        await client.query('LOCK TABLE complaints IN EXCLUSIVE MODE');
+
         // Blockchain: Get last hash
-        const lastComplaintResult = await pool.query('SELECT hash FROM complaints ORDER BY id DESC LIMIT 1');
+        const lastComplaintResult = await client.query('SELECT hash FROM complaints ORDER BY id DESC LIMIT 1');
         const previousHash = lastComplaintResult.rows.length > 0 ? lastComplaintResult.rows[0].hash : '0000000000000000000000000000000000000000000000000000000000000000';
 
-        // --- PROOF OF WORK (MINING) RULE ---
-        // Requirement: Hash must start with '000' (Difficulty: 3)
+        // --- PROOF OF WORK (MINING) ---
+        // Difficulty Reduced to avoid freezing server (User Req). 1 Zero.
         let nonce = 0;
         let hash = '';
-        const difficulty = '000';
+        const difficulty = '0'; // Reduced from '000' for performance/main-thread safety
+        const MAX_NONCE = 100000; // Safety break
 
         console.log(`[BLOCKCHAIN] Mining new complaint record...`);
         const startTime = Date.now();
 
-        while (true) {
-            const dataToHash = `${req.user.id}${category}${location}${description}${district}${previousHash}${ai_urgency}${nonce}`;
+        // Removed while(true) - Using loop with limit
+        while (nonce < MAX_NONCE) {
+            const dataToHash = `${req.user.id}${category}${location}${description}${area}${ward}${previousHash}${ai_urgency}${nonce}`;
             hash = crypto.createHash('sha256').update(dataToHash).digest('hex');
 
             if (hash.startsWith(difficulty)) {
@@ -376,17 +390,21 @@ app.post('/api/complaints', verifyToken, checkRole(['citizen']), upload.array('i
         const timeTaken = ((Date.now() - startTime) / 1000).toFixed(2);
         console.log(`[BLOCKCHAIN] Block Mined! Nonce: ${nonce}, Time: ${timeTaken}s, Hash: ${hash}`);
 
-        const result = await pool.query(
-            'INSERT INTO complaints (user_id, category, location, description, images, district, previous_hash, hash, ai_urgency, ai_sentiment, nonce) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *',
-            [req.user.id, category, location, description, JSON.stringify(imagePaths), district, previousHash, hash, ai_urgency, ai_sentiment, nonce]
+        const result = await client.query(
+            'INSERT INTO complaints (user_id, category, location, description, images, area, ward, previous_hash, hash, ai_urgency, nonce) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *',
+            [req.user.id, category, location, description, JSON.stringify(imagePaths), area, ward, previousHash, hash, ai_urgency, nonce]
         );
 
-
+        await client.query('COMMIT');
+        // --- BLOCKCHAIN TRANSACTION END ---
 
         res.status(201).json(result.rows[0]);
     } catch (err) {
+        await client.query('ROLLBACK');
         console.error('Error saving complaint:', err);
         res.status(500).json({ error: 'Internal Server Error' });
+    } finally {
+        client.release();
     }
 });
 
@@ -587,11 +605,11 @@ app.post('/api/subscribe', async (req, res) => {
         const mailOptions = {
             from: process.env.EMAIL_USER,
             to: email,
-            subject: 'Welcome to UIIS Impact Reports',
+            subject: 'Welcome to UIIS - Urban Water Intelligence System',
             text: `You have successfully subscribed to the Urban Water Intelligence System impact reports. We will keep you updated on the latest urban resilience insights.`,
             html: `
                 <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
-                    <h2 style="color: #00D2FF;">Welcome to UIIS Network</h2>
+                    <h2 style="color: #00D2FF;">Welcome to UIIS - Urban Water Intelligence System</h2>
                     <p>You have successfully subscribed to the <strong>Urban Water Intelligence System</strong> mailing list.</p>
                     <p>We are committed to providing you with data-driven insights for a smarter, more resilient future.</p>
                     <p>Expect monthly updates on urban impact reports and platform enhancements.</p>
@@ -607,6 +625,146 @@ app.post('/api/subscribe', async (req, res) => {
     } catch (err) {
         console.error('Subscription error:', err);
         res.status(500).json({ error: 'Failed to subscribe' });
+    }
+});
+
+// ============================================================================
+// DATA & ANALYSIS ROUTES (Moved from Frontend)
+// ============================================================================
+
+const pipelineData = require('./data/pcmcPipelineData');
+const contaminationAnalyzer = require('./utils/contaminationAnalyzer');
+const dijkstraUtils = require('./utils/dijkstra');
+
+// 1. Get Pipeline Network Data (Nodes, Edges, Areas)
+app.get('/api/data/pipeline', (req, res) => {
+    res.json({
+        nodes: pipelineData.PIPELINE_NODES,
+        edges: pipelineData.PIPELINE_EDGES,
+        areas: pipelineData.PCMC_AREAS,
+        nodeTypes: pipelineData.NODE_TYPES
+    });
+});
+
+// 1.1 Identify Area/Ward (Offline GIS)
+app.get('/api/gis/identify-area', (req, res) => {
+    try {
+        const { lat, lng } = req.query;
+        if (!lat || !lng) return res.status(400).json({ error: 'Lat/Lng required' });
+
+        const result = pipelineData.findNearestArea(parseFloat(lat), parseFloat(lng));
+        res.json(result);
+    } catch (err) {
+        console.error('GIS Error:', err);
+        res.status(500).json({ error: 'GIS Lookup Failed' });
+    }
+});
+
+// 2. Correlate Complaints (Clustering)
+app.post('/api/analysis/correlate', verifyToken, async (req, res) => {
+    try {
+        // Since we have the complaints in DB, we could fetch them here or accept them in body
+        // For flexibility, let's look up complaints if IDs are passed, or use all active ones
+
+        const result = await pool.query("SELECT * FROM complaints WHERE status != 'resolved'");
+        const allComplaints = result.rows;
+
+        const clusters = contaminationAnalyzer.correlateComplaints(allComplaints);
+        res.json(clusters);
+    } catch (err) {
+        console.error('Correlation error:', err);
+        res.status(500).json({ error: 'Analysis failed' });
+    }
+});
+
+// 3. Optimal Route Planning (Dijkstra)
+app.post('/api/analysis/route', verifyToken, (req, res) => {
+    try {
+        const { lat, lng } = req.body;
+        if (!lat || !lng) return res.status(400).json({ error: 'Coordinates required' });
+
+        const result = dijkstraUtils.findOptimalConnectionRoute(lat, lng);
+        res.json(result);
+    } catch (err) {
+        console.error('Routing error:', err);
+        res.status(500).json({ error: 'Route calculation failed' });
+    }
+});
+
+// 4. Downstream Impact Analysis
+app.post('/api/analysis/impact', verifyToken, async (req, res) => {
+    try {
+        const { complaintId } = req.body;
+
+        // Fetch specific complaint details since the util expects full object
+        const complaintResult = await pool.query('SELECT * FROM complaints WHERE id = $1', [complaintId]);
+        if (complaintResult.rows.length === 0) return res.status(404).json({ error: 'Complaint not found' });
+
+        const complaint = complaintResult.rows[0];
+        const result = contaminationAnalyzer.findAffectedDownstream(complaint);
+        res.json(result || { success: false, message: 'No downstream impact found' });
+    } catch (err) {
+        console.error('Impact analysis error:', err);
+        res.status(500).json({ error: 'Impact analysis failed' });
+    }
+});
+
+// 5. Generate Recommendations
+app.post('/api/analysis/recommendations', verifyToken, async (req, res) => {
+    try {
+        const { complaintId } = req.body;
+
+        const complaintResult = await pool.query('SELECT * FROM complaints WHERE id = $1', [complaintId]);
+        if (complaintResult.rows.length === 0) return res.status(404).json({ error: 'Complaint not found' });
+
+        const complaint = complaintResult.rows[0];
+
+        // Fetch other active complaints for correlation context
+        const allComplaintsResult = await pool.query("SELECT * FROM complaints WHERE status != 'resolved'");
+        const allComplaints = allComplaintsResult.rows;
+
+        // Run deep analysis
+        const sourceAnalysis = contaminationAnalyzer.analyzeContaminationSource(complaint, allComplaints);
+
+        // Generate base recommendations
+        const recommendations = contaminationAnalyzer.generateRecommendations(complaint, []);
+
+        // If specific sources found, add high-priority recommendation
+        if (sourceAnalysis && sourceAnalysis.potentialSources.length > 0) {
+            const topSource = sourceAnalysis.potentialSources[0];
+            recommendations.unshift({
+                action: 'INSPECT',
+                title: 'Potential Source Identified',
+                description: `Possible cause: ${topSource.description} (${Math.round(topSource.distance * 1000)}m away).`,
+                priority: 'CRITICAL',
+                estimatedTime: '1 hour',
+                sourceId: topSource.id,
+                sourceCoordinates: topSource.coordinates
+            });
+        }
+
+        res.json({
+            recommendations,
+            analysis: sourceAnalysis
+        });
+    } catch (err) {
+        console.error('Recommendation error:', err);
+        res.status(500).json({ error: 'Failed to generate recommendations' });
+    }
+});
+
+// 6. Prioritize Complaints
+app.post('/api/analysis/prioritize', verifyToken, async (req, res) => {
+    try {
+        // Fetch all active complaints
+        const result = await pool.query("SELECT * FROM complaints WHERE status != 'resolved'");
+        const allComplaints = result.rows;
+
+        const prioritized = contaminationAnalyzer.prioritizeComplaints(allComplaints);
+        res.json(prioritized);
+    } catch (err) {
+        console.error('Prioritization error:', err);
+        res.status(500).json({ error: 'Prioritization failed' });
     }
 });
 

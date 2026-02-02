@@ -47,20 +47,34 @@ const Navbar = () => {
                     <Toolbar disableGutters sx={{ height: 80 }}>
                         <Box component={RouterLink} to="/" sx={{ display: 'flex', alignItems: 'center', flexGrow: 1, textDecoration: 'none' }}>
                             <Droplets size={32} color="#00D2FF" style={{ marginRight: 12 }} />
-                            <Typography
-                                variant="h6"
-                                component="div"
-                                sx={{
-                                    fontFamily: 'Outfit',
-                                    fontWeight: 800,
-                                    background: 'linear-gradient(45deg, #00D2FF 30%, #9D50BB 90%)',
-                                    WebkitBackgroundClip: 'text',
-                                    WebkitTextFillColor: 'transparent',
-                                    fontSize: '1.5rem'
-                                }}
-                            >
-                                UIIS
-                            </Typography>
+                            <Box>
+                                <Typography
+                                    variant="h6"
+                                    component="div"
+                                    sx={{
+                                        fontFamily: 'Outfit',
+                                        fontWeight: 800,
+                                        background: 'linear-gradient(45deg, #00D2FF 30%, #9D50BB 90%)',
+                                        WebkitBackgroundClip: 'text',
+                                        WebkitTextFillColor: 'transparent',
+                                        fontSize: '1.5rem',
+                                        lineHeight: 1.1
+                                    }}
+                                >
+                                    UIIS
+                                </Typography>
+                                <Typography
+                                    variant="caption"
+                                    sx={{
+                                        color: 'text.secondary',
+                                        fontSize: '0.65rem',
+                                        letterSpacing: 0.5,
+                                        display: { xs: 'none', sm: 'block' }
+                                    }}
+                                >
+                                    Urban Water Intelligence
+                                </Typography>
+                            </Box>
                         </Box>
 
                         <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 2, alignItems: 'center' }}>
@@ -101,6 +115,25 @@ const Navbar = () => {
                                                 sx={{ textTransform: 'none', fontWeight: 600 }}
                                             >
                                                 Issues List
+                                            </Button>
+                                            <Button
+                                                component={RouterLink}
+                                                to="/water-intelligence"
+                                                startIcon={<BrainCircuit size={18} />}
+                                                color="inherit"
+                                                sx={{
+                                                    textTransform: 'none',
+                                                    fontWeight: 700,
+                                                    background: 'linear-gradient(45deg, #00D2FF 30%, #3A7BD5 90%)',
+                                                    color: 'white',
+                                                    borderRadius: 2,
+                                                    px: 2,
+                                                    '&:hover': {
+                                                        background: 'linear-gradient(45deg, #00D2FF 50%, #3A7BD5 100%)',
+                                                    }
+                                                }}
+                                            >
+                                                Water Intelligence
                                             </Button>
 
                                         </>
@@ -172,7 +205,10 @@ const Navbar = () => {
                 }}
             >
                 <Box sx={{ textAlign: 'center', p: 3 }}>
-                    <Typography variant="h6" sx={{ mb: 3, fontFamily: 'Outfit', fontWeight: 800 }}>UIIS</Typography>
+                    <Box sx={{ mb: 3 }}>
+                        <Typography variant="h6" sx={{ fontFamily: 'Outfit', fontWeight: 800 }}>UIIS</Typography>
+                        <Typography variant="caption" color="text.secondary">Urban Water Intelligence System</Typography>
+                    </Box>
                     <List sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                         <ListItem disablePadding sx={{ justifyContent: 'center', mb: 2 }}>
                             <IconButton onClick={colorMode.toggleColorMode} color="inherit">
@@ -200,6 +236,11 @@ const Navbar = () => {
                                         <ListItem disablePadding>
                                             <Button fullWidth component={RouterLink} to="/officer-complaints" onClick={handleDrawerToggle} startIcon={<ListChecks size={18} />} sx={{ justifyContent: 'flex-start', px: 2, py: 1.5 }}>
                                                 Issues List
+                                            </Button>
+                                        </ListItem>
+                                        <ListItem disablePadding>
+                                            <Button fullWidth component={RouterLink} to="/water-intelligence" onClick={handleDrawerToggle} startIcon={<BrainCircuit size={18} />} sx={{ justifyContent: 'flex-start', px: 2, py: 1.5, color: 'primary.main', fontWeight: 700 }}>
+                                                Water Intelligence
                                             </Button>
                                         </ListItem>
 

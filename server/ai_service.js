@@ -1,54 +1,120 @@
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-const dotenv = require('dotenv');
-dotenv.config();
+const { pipeline, env } = require('@xenova/transformers');
+const path = require('path');
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-const modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+// Configure local cache directory for models so they are not downloaded every time
+env.cacheDir = path.join(__dirname, 'models');
+env.allowLocalModels = true;
 
-async function analyzeComplaint(description) {
-    if (!process.env.GEMINI_API_KEY) {
-        console.warn("GEMINI_API_KEY not found in environment. Using fallback categorization.");
-        return null;
+// Cache the pipelines to avoid reloading
+let classifier = null;
+
+// Categories as specified by the user
+const CANDIDATE_LABELS = [
+    "New Connection",
+    "Water Leakage",
+    "Water Contamination",
+    "No Water Supply",
+    "Low Water Pressure",
+    "Sewerage/Drainage Blockage",
+    "Billing & Payment Issues",
+    "Water Wastage Reporting",
+    "Damaged Main Valve/Infrastructure",
+    "Open/Broken Manhole",
+    "Supply Schedule Irregularity",
+    "Non-Water Related"
+];
+
+// Heuristics for Urgency based on category
+const URGENCY_LABELS = [
+    "Critical Emergency",
+    "High Urgency",
+    "Medium Urgency",
+    "Low Urgency"
+];
+
+const FINAL_URGENCY_MAP = {
+    "Critical Emergency": "Emergency",
+    "High Urgency": "High",
+    "Medium Urgency": "Medium",
+    "Low Urgency": "Low"
+};
+
+async function getClassifier() {
+    if (!classifier) {
+        console.log("Loading Zero-Shot Classifier (Roberta)...");
+        // Using roberta-large-mnli as requested/implied for robust zero-shot classification
+        classifier = await pipeline('zero-shot-classification', 'Xenova/roberta-large-mnli');
     }
-
-    try {
-        const model = genAI.getGenerativeModel({ model: modelName });
-
-        const prompt = `
-            Analyze the following citizen complaint for an "Urban Water Intelligence System".
-            IMPORTANT: We only deal with WATER-RELATED problems.
-            Complaint: "${description}"
-
-            If the complaint is NOT related to water (e.g., roads, electricity, noise, theft), set the category to "Non-Water Related".
-
-            Provide the response in the following JSON format:
-            {
-                "category": "One of: No Water Supply, Water Leakage, Contaminated Water, Low Water Pressure, Drainage & Sewage, Illegal Connection, Non-Water Related",
-                "urgency": "One of: Low, Medium, High, Emergency",
-                "sentiment": "One of: Frustrated, Neutral, Appreciative, Angry",
-                "is_spam": true/false,
-                "spam_reason": "If spam, explain why (e.g. Gibberish, Irrelevant, Abusive, Test Data). Otherwise null."
-            }
-
-            STRICTLY MARK AS SPAM IF:
-            1. The input is random gibberish (e.g., "sdfghj", "123123").
-            2. It contains absolutely no meaningful information.
-            3. It is clearly test data (e.g., "test test test").
-            4. It is abusive or offensive without reporting a valid issue.
-        `;
-
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
-
-        // Clean the response in case the model includes markdown formatting
-        const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        return JSON.parse(cleanedText);
-    } catch (error) {
-        console.error("AI Analysis Error:", error);
-        return null;
-    }
+    return classifier;
 }
 
+async function analyzeComplaint(description) {
+    try {
+        // 1. SPAM CHECK (Improved Heuristics)
+        if (!description || description.trim().length < 5) {
+            return {
+                category: "Non-Water Related",
+                urgency: "Low",
+                is_spam: true,
+                spam_reason: "Too short / Empty"
+            };
+        }
+
+        // Check for legitimacy keywords (water-related or complaint indicators)
+        const legitimacyKeywords = ["water", "leak", "supply", "billing", "drainage", "hygiene", "health", "days", "locality"];
+        const hasLegitimacy = legitimacyKeywords.some(keyword => description.toLowerCase().includes(keyword));
+        if (!hasLegitimacy) {
+            return {
+                category: "Non-Water Related",
+                urgency: "Low",
+                is_spam: true,
+                spam_reason: "No relevant keywords detected"
+            };
+        }
+
+        // Refined gibberish regex: avoid flagging repetitive but meaningful text
+        const gibberishRegex = /^(.)\1{4,}$|^([asdfjkl;]{5,})$|^([1234567890]{6,})$/i; // Increased thresholds for repetition
+        if (gibberishRegex.test(description.replace(/\s/g, ''))) {
+            return {
+                category: "Non-Water Related",
+                urgency: "Low",
+                is_spam: true,
+                spam_reason: "Gibberish detected"
+            };
+        }
+
+        // 2. CLASSIFICATION (Roberta) - Category
+        const classify = await getClassifier();
+        const categoryResult = await classify(description, CANDIDATE_LABELS);
+        const topCategory = categoryResult.labels[0];
+        const categoryScore = categoryResult.scores[0];
+
+        // Fallback for very low confidence
+        const finalCategory = categoryScore > 0.15 ? topCategory : "Non-Water Related";
+
+        // 3. CLASSIFICATION (Roberta) - Urgency (Context-aware)
+        // We re-use the same zero-shot classifier but with urgency labels
+        const urgencyResult = await classify(description, URGENCY_LABELS);
+        const topUrgencyLabel = urgencyResult.labels[0];
+        const finalUrgency = FINAL_URGENCY_MAP[topUrgencyLabel] || "Medium";
+
+        return {
+            category: finalCategory,
+            urgency: finalUrgency,
+            is_spam: false,
+            spam_reason: null
+        };
+
+    } catch (error) {
+        console.error("AI Analysis Error (Local Roberta):", error);
+        // Fallback return
+        return {
+            category: "Non-Water Related",
+            urgency: "Low",
+            is_spam: false,
+            spam_reason: null
+        };
+    }
+}
 
 module.exports = { analyzeComplaint };
