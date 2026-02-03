@@ -115,40 +115,44 @@ const Hero = () => {
                                     fontSize: { xs: '2.5rem', sm: '3rem', md: '4rem', lg: '4.5rem' },
                                     fontWeight: 900,
                                     lineHeight: 1.1,
-                                    mb: 3,
+                                    mb: 2,
                                     letterSpacing: '-0.02em'
                                 }}
                             >
-                                <Box component="span" sx={{ color: 'text.primary' }}>
-                                    Report. Track.
+                                <Box component="span" className="notranslate" sx={{ color: 'text.primary' }}>
+                                    UIIS: Urban Issue
                                 </Box>
                                 <br />
                                 <Box
                                     component="span"
+                                    className="notranslate"
                                     sx={{
                                         background: 'linear-gradient(90deg, #00D2FF 0%, #9D50BB 100%)',
                                         WebkitBackgroundClip: 'text',
                                         WebkitTextFillColor: 'transparent'
                                     }}
                                 >
-                                    Transform.
+                                    Intelligence System
                                 </Box>
                             </Typography>
 
-                            {/* Subheading */}
+                            {/* Subheading with Water Focus */}
                             <Typography
                                 variant="h5"
                                 sx={{
                                     color: 'text.secondary',
                                     mb: 4,
-                                    maxWidth: '560px',
+                                    maxWidth: '600px',
                                     fontWeight: 400,
                                     fontSize: { xs: '1rem', md: '1.25rem' },
                                     lineHeight: 1.6
                                 }}
                             >
-                                UIIS empowers citizens to report water issues — shortages, contamination,
-                                leaks — while giving officers AI-driven insights to resolve them faster.
+                                <Box component="span" sx={{ display: 'block', mb: 1, fontWeight: 700, color: 'primary.main' }}>
+                                    Current Focus: Water Management Solutions
+                                </Box>
+                                Empowering citizens to report water issues — shortages, contamination,
+                                leaks — while giving officers AI-driven insights to resolve them faster using AMTG.
                             </Typography>
 
                             {/* CTA Buttons */}

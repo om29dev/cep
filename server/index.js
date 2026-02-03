@@ -11,6 +11,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const nodemailer = require('nodemailer');
 const { analyzeComplaint } = require('./ai_service'); // Modified: Removed detectPattern
+const { askOfficerAssistant } = require('./gemini_service');
 
 dotenv.config();
 
@@ -25,7 +26,7 @@ const JWT_SECRET_KEY = process.env.JWT_SECRET || 'dev_secret_key_do_not_use_in_p
 
 // Middleware
 app.use(cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173', // Configurable Origin
+    origin: [process.env.CLIENT_URL || 'http://localhost:5173', 'https://localhost:5173'],
     credentials: true
 }));
 app.use(express.json());
@@ -153,8 +154,27 @@ const initDb = async () => {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE TABLE IF NOT EXISTS notifications (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id),
+                complaint_id INTEGER REFERENCES complaints(id),
+                type TEXT NOT NULL,
+                title TEXT NOT NULL,
+                message TEXT NOT NULL,
+                is_read BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
         `);
-        console.log('Database initialized.');
+
+        // Check and add new columns if they don't exist
+        await pool.query(`
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS user_ward TEXT;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS user_area TEXT;
+        `);
+
+        console.log('Database initialized and schema updated.');
     } catch (err) {
         console.error('Error initializing database:', err);
     }
@@ -205,12 +225,21 @@ app.post('/api/auth/send-otp', async (req, res) => {
         };
 
         await transporter.sendMail(mailOptions);
-        console.log(`[EMAIL SERVICE] OTP sent to ${email}`);
+        console.log(`[EMAIL SERVICE] OTP successfully sent to ${email}`);
 
         res.json({ message: 'OTP sent successfully to your email' });
     } catch (err) {
-        console.error('Email error:', err);
-        res.status(500).json({ error: 'Failed to send OTP email. Please check server logs.' });
+        console.error('[EMAIL SERVICE ERROR]:', {
+            message: err.message,
+            stack: err.stack,
+            code: err.code,
+            command: err.command
+        });
+        res.status(500).json({
+            error: 'Failed to send OTP email.',
+            details: err.message,
+            suggestion: 'Please check if the email service provider is blocking the request or if credentials expired.'
+        });
     }
 });
 
@@ -251,20 +280,20 @@ app.post('/api/auth/verify-otp', async (req, res) => {
 // AUTH ROUTES
 app.post('/api/auth/register', async (req, res) => {
     try {
-        // Now accepting fullName
-        const { username, fullName, email, password, role } = req.body;
+        // Now accepting fullName and phone
+        const { username, fullName, email, password, phone, role } = req.body;
 
         // Basic Check
-        if (!username || !fullName || !password) {
-            return res.status(400).json({ error: 'Username, Full Name, and Password are required.' });
+        if (!username || !fullName || !password || !phone) {
+            return res.status(400).json({ error: 'Username, Full Name, Password, and Phone Number are required.' });
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // Insert with full_name
+        // Insert with full_name and phone
         const result = await pool.query(
-            'INSERT INTO users (username, full_name, email, password, role) VALUES ($1, $2, $3, $4, $5) RETURNING id, username, full_name, email, role',
-            [username, fullName, email, hashedPassword, role || 'citizen']
+            'INSERT INTO users (username, full_name, email, password, phone, role) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, username, full_name, email, phone, role',
+            [username, fullName, email, hashedPassword, phone, role || 'citizen']
         );
 
         const user = result.rows[0];
@@ -312,12 +341,33 @@ app.post('/api/auth/login', async (req, res) => {
 // Get Current User (Session persistence)
 app.get('/api/auth/me', verifyToken, async (req, res) => {
     try {
-        const result = await pool.query('SELECT id, username, full_name, email, role FROM users WHERE id = $1', [req.user.id]);
+        const result = await pool.query('SELECT id, username, full_name, email, role, phone, user_ward, user_area FROM users WHERE id = $1', [req.user.id]);
         if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
         res.json(result.rows[0]);
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// Update User Profile
+app.put('/api/profile', verifyToken, async (req, res) => {
+    try {
+        const { fullName, phone, user_ward, user_area } = req.body;
+
+        const result = await pool.query(
+            `UPDATE users 
+             SET full_name = $1, phone = $2, user_ward = $3, user_area = $4 
+             WHERE id = $5 
+             RETURNING id, username, full_name, email, role, phone, user_ward, user_area`,
+            [fullName, phone, user_ward, user_area, req.user.id]
+        );
+
+        if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Profile update error:', err);
+        res.status(500).json({ error: 'Failed to update profile' });
     }
 });
 
@@ -437,10 +487,39 @@ app.post('/api/complaints/:id/resolve', verifyToken, checkRole(['officer', 'admi
         );
 
         if (result.rows.length === 0) return res.status(404).json({ error: 'Complaint not found' });
+
+        // --- Create Notification for the Citizen ---
+        const complaint = result.rows[0];
+        const notificationMessage = `Complaint #${complaint.id} (${complaint.category}) has been resolved. Remarks: ${remarks || 'No remarks provided.'}`;
+
+        await pool.query(
+            'INSERT INTO notifications (user_id, complaint_id, type, title, message) VALUES ($1, $2, $3, $4, $5)',
+            [complaint.user_id, complaint.id, 'complaint_resolved', 'Issue Resolved', notificationMessage]
+        );
+
         res.json(result.rows[0]);
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Error resolving complaint' });
+    }
+});
+
+// Officer AI Assistance
+app.post('/api/officer/ask-ai', verifyToken, checkRole(['officer', 'admin']), async (req, res) => {
+    try {
+        const { complaintId, query } = req.body;
+
+        // Fetch complaint details
+        const result = await pool.query('SELECT * FROM complaints WHERE id = $1', [complaintId]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Complaint not found' });
+
+        const complaint = result.rows[0];
+        const aiResponse = await askOfficerAssistant(complaint, query);
+
+        res.json(aiResponse);
+    } catch (err) {
+        console.error("AI Assistance Error:", err);
+        res.status(500).json({ error: 'Failed to get AI response' });
     }
 });
 
@@ -553,10 +632,10 @@ app.get('/api/blockchain/verify', verifyToken, async (req, res) => {
         let isValid = true;
         const chainStatus = [];
         let expectedPreviousHash = '0000000000000000000000000000000000000000000000000000000000000000';
-        const difficulty = '000';
+        const difficulty = '0';
 
         for (const complaint of complaints) {
-            const dataToHash = `${complaint.user_id}${complaint.category}${complaint.location}${complaint.description}${complaint.district}${complaint.previous_hash}${complaint.ai_urgency}${complaint.nonce}`;
+            const dataToHash = `${complaint.user_id}${complaint.category}${complaint.location}${complaint.description}${complaint.area || ''}${complaint.ward || ''}${complaint.previous_hash}${complaint.ai_urgency}${complaint.nonce}`;
             const calculatedHash = crypto.createHash('sha256').update(dataToHash).digest('hex');
 
             const isHashValid = calculatedHash === complaint.hash;
@@ -596,6 +675,37 @@ app.get('/api/blockchain/verify', verifyToken, async (req, res) => {
 });
 
 
+
+// --- NOTIFICATION ROUTES ---
+
+app.get('/api/notifications', verifyToken, async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC',
+            [req.user.id]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching notifications:', err);
+        res.status(500).json({ error: 'Failed to fetch notifications' });
+    }
+});
+
+app.put('/api/notifications/:id/read', verifyToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query(
+            'UPDATE notifications SET is_read = TRUE WHERE id = $1 AND user_id = $2 RETURNING *',
+            [id, req.user.id] // Ensure user owns the notification
+        );
+
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Notification not found' });
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Error marking notification as read:', err);
+        res.status(500).json({ error: 'Failed to update notification' });
+    }
+});
 
 app.post('/api/subscribe', async (req, res) => {
     try {
@@ -765,6 +875,71 @@ app.post('/api/analysis/prioritize', verifyToken, async (req, res) => {
     } catch (err) {
         console.error('Prioritization error:', err);
         res.status(500).json({ error: 'Prioritization failed' });
+    }
+});
+
+// ============================================================================
+// GUEST PUBLIC ROUTES (No Auth Required)
+// ============================================================================
+
+// Guest: Get Officer Email by Area (for letter generation)
+app.get('/api/guest/get-officer-email', async (req, res) => {
+    try {
+        const { area } = req.query;
+
+        if (!area) {
+            return res.status(400).json({ error: 'Area is required' });
+        }
+
+        // Look up officers assigned to this area
+        const result = await pool.query(
+            `SELECT email, full_name, user_area FROM users 
+             WHERE role = 'officer' AND LOWER(user_area) = LOWER($1) 
+             LIMIT 1`,
+            [area]
+        );
+
+        if (result.rows.length > 0) {
+            const officer = result.rows[0];
+            res.json({
+                found: true,
+                officerName: officer.full_name,
+                officerEmail: officer.email,
+                area: officer.user_area
+            });
+        } else {
+            // Fallback: Return generic contact (Government Sourced)
+            res.json({
+                found: false,
+                officerName: pipelineData.DEPARTMENT_CONTACT.name,
+                officerEmail: pipelineData.DEPARTMENT_CONTACT.email,
+                officerPhone: pipelineData.DEPARTMENT_CONTACT.phone,
+                area: area,
+                message: 'No specific officer assigned to this area. Using official department contact.'
+            });
+        }
+    } catch (err) {
+        console.error('Guest officer lookup error:', err);
+        res.status(500).json({ error: 'Failed to lookup officer' });
+    }
+});
+
+// Guest: Generate Letter with AI
+app.post('/api/guest/generate-letter', async (req, res) => {
+    try {
+        const { issue, location, area, officerName, ward } = req.body;
+
+        if (!issue || issue.length < 5) {
+            return res.status(400).json({ error: 'Please provide a valid issue description.' });
+        }
+
+        const { generateCitizenLetter } = require('./gemini_service');
+        const letter = await generateCitizenLetter({ issue, location, area, officerName, ward });
+
+        res.json({ letter });
+    } catch (err) {
+        console.error('Letter generation error:', err);
+        res.status(500).json({ error: 'Failed to generate letter' });
     }
 });
 

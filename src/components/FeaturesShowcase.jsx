@@ -71,7 +71,7 @@ const FeaturesShowcase = () => {
         {
             icon: <Globe size={28} />,
             title: 'Multi-locality Support',
-            description: 'UIIS (Urban Water Intelligence System) supports multiple localities and zones, making it scalable for entire municipal regions.',
+            description: '<span className="notranslate">UIIS (Urban Issue Intelligence System)</span> supports multiple localities and zones, making it scalable for entire municipal regions.',
             color: '#673AB7'
         }
     ];
@@ -80,14 +80,15 @@ const FeaturesShowcase = () => {
         <Box sx={{ py: 12 }}>
             <Container maxWidth="lg">
                 <Typography
-                    variant="overline"
+                    variant="h6"
                     sx={{
                         color: 'primary.main',
                         fontWeight: 700,
                         letterSpacing: 3,
                         display: 'block',
                         textAlign: 'center',
-                        mb: 1
+                        mb: 1,
+                        fontSize: '1.5rem'
                     }}
                 >
                     POWERFUL FEATURES
@@ -108,7 +109,7 @@ const FeaturesShowcase = () => {
                     align="center"
                     sx={{ color: 'text.secondary', mb: 8, maxWidth: '800px', mx: 'auto' }}
                 >
-                    Built with cutting-edge technology to ensure transparency, efficiency, and community empowerment.
+                    Built with AMTG to ensure transparency, efficiency, and community empowerment.
                 </Typography>
 
                 <Grid container spacing={3} justifyContent="center">

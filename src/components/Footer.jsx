@@ -34,10 +34,10 @@ const Footer = () => {
                     <Grid size={{ xs: 12, md: 4 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                             <Droplets size={24} color="#00D2FF" style={{ marginRight: 8 }} />
-                            <Box>
+                            <Box className="notranslate">
                                 <Typography variant="h6" sx={{ fontFamily: 'Outfit', fontWeight: 800, lineHeight: 1.1 }}>UIIS</Typography>
-                                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-                                    Urban Water Intelligence System
+                                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem', fontWeight: 700 }}>
+                                    Urban Issue Intelligence System
                                 </Typography>
                             </Box>
                         </Box>
@@ -116,8 +116,8 @@ const Footer = () => {
                 <Divider sx={{ borderColor: theme.palette.divider, mb: 4 }} />
 
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
-                    <Typography variant="caption" color="text.secondary">
-                        © 2025 UIIS - Urban Water Intelligence System. All rights reserved.
+                    <Typography variant="caption" color="text.secondary" className="notranslate">
+                        © 2025 UIIS - Urban Issue Intelligence System. All rights reserved.
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
                         Data-Driven Insights for Water Resilience

@@ -20,7 +20,7 @@ import {
     Grid
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
-import { UserPlus, Trash2, Shield, User, Search, TrendingUp, Lock, Unlock } from 'lucide-react';
+import { UserPlus, Trash2, Shield, User, Search, TrendingUp, Lock, Unlock, CheckCircle, AlertTriangle } from 'lucide-react';
 import { useTheme } from '@mui/material/styles';
 
 const AdminDashboard = () => {
@@ -28,6 +28,12 @@ const AdminDashboard = () => {
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [openDialog, setOpenDialog] = useState(false);
+    const [integrityDialog, setIntegrityDialog] = useState({
+        open: false,
+        success: false,
+        title: '',
+        message: ''
+    });
 
 
     // Search State
@@ -259,12 +265,27 @@ const AdminDashboard = () => {
                                 try {
                                     const res = await axios.get('/api/blockchain/verify');
                                     if (res.data.isValid) {
-                                        alert(`Chain Integrity Verified! Verified ${res.data.totalRecords} records across the distributed ledger.`);
+                                        setIntegrityDialog({
+                                            open: true,
+                                            success: true,
+                                            title: 'Chain Integrity Verified!',
+                                            message: `Verified ${res.data.totalRecords} records across the distributed ledger.`
+                                        });
                                     } else {
-                                        alert("CRITICAL WARNING: Chain Integrity Compromised! Discrepancy detected in record hashes.");
+                                        setIntegrityDialog({
+                                            open: true,
+                                            success: false,
+                                            title: 'CRITICAL WARNING: Chain Integrity Compromised!',
+                                            message: 'Discrepancy detected in record hashes. The immutable ledger may have been tampered with.'
+                                        });
                                     }
                                 } catch (e) {
-                                    alert("Verification failed: " + e.message);
+                                    setIntegrityDialog({
+                                        open: true,
+                                        success: false,
+                                        title: 'Verification Failed',
+                                        message: e.message || 'An error occurred during verification.'
+                                    });
                                 }
                             }}
                             sx={{
@@ -335,6 +356,53 @@ const AdminDashboard = () => {
                     <DialogActions sx={{ p: 3 }}>
                         <Button variant="contained" onClick={handleCreateOfficer} disabled={!formData.email || !formData.password || !formData.username || !formData.fullName}>
                             Create Account
+                        </Button>
+                    </DialogActions>
+                </Dialog>
+
+                {/* Integrity Check Dialog */}
+                <Dialog
+                    open={integrityDialog.open}
+                    onClose={() => setIntegrityDialog({ ...integrityDialog, open: false })}
+                    maxWidth="sm"
+                    fullWidth
+                    PaperProps={{
+                        sx: {
+                            borderRadius: 2,
+                            border: 1,
+                            borderColor: integrityDialog.success ? 'success.main' : 'error.main',
+                            boxShadow: integrityDialog.success
+                                ? '0 0 20px rgba(76, 175, 80, 0.2)'
+                                : '0 0 20px rgba(211, 47, 47, 0.2)'
+                        }
+                    }}
+                >
+                    <DialogTitle sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1.5,
+                        color: integrityDialog.success ? 'success.main' : 'error.main',
+                        bgcolor: integrityDialog.success ? 'rgba(76, 175, 80, 0.05)' : 'rgba(211, 47, 47, 0.05)',
+                        py: 2
+                    }}>
+                        {integrityDialog.success ? <CheckCircle size={28} /> : <AlertTriangle size={28} />}
+                        <Typography variant="h6" fontWeight="bold">
+                            {integrityDialog.title}
+                        </Typography>
+                    </DialogTitle>
+                    <DialogContent sx={{ py: 3, mt: 1 }}>
+                        <Typography variant="body1" fontSize="1.1rem">
+                            {integrityDialog.message}
+                        </Typography>
+                    </DialogContent>
+                    <DialogActions sx={{ p: 2, bgcolor: theme.palette.action.hover }}>
+                        <Button
+                            onClick={() => setIntegrityDialog({ ...integrityDialog, open: false })}
+                            color={integrityDialog.success ? "success" : "error"}
+                            variant="contained"
+                            sx={{ fontWeight: 'bold', px: 3 }}
+                        >
+                            OK
                         </Button>
                     </DialogActions>
                 </Dialog>

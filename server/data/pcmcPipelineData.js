@@ -2,6 +2,7 @@
  * PCMC (Pimpri-Chinchwad Municipal Corporation) Water Pipeline Network Data
  * 
  * Server-side version (CommonJS)
+ * HIGH DENSITY NETWORK - Realistic Urban Distribution
  */
 
 // ============================================================================
@@ -9,847 +10,315 @@
 // ============================================================================
 
 const PCMC_AREAS = [
-    {
-        id: 'pimpri',
-        name: 'Pimpri',
-        center: [18.6261, 73.8122],
-        wards: ['A1', 'A2', 'A3'],
-        population: 195000,
-        waterDemand: 45, // MLD
-    },
-    {
-        id: 'chinchwad',
-        name: 'Chinchwad',
-        center: [18.6276, 73.7809],
-        wards: ['B1', 'B2', 'B3'],
-        population: 220000,
-        waterDemand: 52,
-    },
-    {
-        id: 'akurdi',
-        name: 'Akurdi',
-        center: [18.6509, 73.7785],
-        wards: ['C1', 'C2'],
-        population: 85000,
-        waterDemand: 20,
-    },
-    {
-        id: 'nigdi',
-        name: 'Nigdi',
-        center: [18.6517, 73.7684],
-        wards: ['D1', 'D2', 'D3'],
-        population: 145000,
-        waterDemand: 35,
-    },
-    {
-        id: 'bhosari',
-        name: 'Bhosari',
-        center: [18.6282, 73.8515],
-        wards: ['E1', 'E2', 'E3'],
-        population: 180000,
-        waterDemand: 42,
-    },
-    {
-        id: 'dighi',
-        name: 'Dighi',
-        center: [18.6165, 73.8522],
-        wards: ['F1', 'F2'],
-        population: 65000,
-        waterDemand: 15,
-    },
-    {
-        id: 'talawade',
-        name: 'Talawade',
-        center: [18.6946, 73.7681],
-        wards: ['G1', 'G2'],
-        population: 45000,
-        waterDemand: 12,
-    },
-    {
-        id: 'wakad',
-        name: 'Wakad',
-        center: [18.5993, 73.7625],
-        wards: ['H1', 'H2', 'H3'],
-        population: 175000,
-        waterDemand: 40,
-    },
-    {
-        id: 'thergaon',
-        name: 'Thergaon',
-        center: [18.6050, 73.7697],
-        wards: ['I1', 'I2'],
-        population: 95000,
-        waterDemand: 22,
-    },
-    {
-        id: 'kalewadi',
-        name: 'Kalewadi',
-        center: [18.6282, 73.7858],
-        wards: ['J1', 'J2'],
-        population: 70000,
-        waterDemand: 18,
-    },
+    { id: 'pimpri', name: 'Pimpri', center: [18.6261, 73.8122], wards: ['A1', 'A2', 'A3'], population: 195000, waterDemand: 45 },
+    { id: 'chinchwad', name: 'Chinchwad', center: [18.6276, 73.7809], wards: ['B1', 'B2', 'B3'], population: 220000, waterDemand: 52 },
+    { id: 'akurdi', name: 'Akurdi', center: [18.6509, 73.7785], wards: ['C1', 'C2'], population: 85000, waterDemand: 20 },
+    { id: 'nigdi', name: 'Nigdi', center: [18.6517, 73.7684], wards: ['D1', 'D2', 'D3'], population: 145000, waterDemand: 35 },
+    { id: 'bhosari', name: 'Bhosari', center: [18.6282, 73.8515], wards: ['E1', 'E2', 'E3'], population: 180000, waterDemand: 42 },
+    { id: 'dighi', name: 'Dighi', center: [18.6165, 73.8522], wards: ['F1', 'F2'], population: 65000, waterDemand: 15 },
+    { id: 'talawade', name: 'Talawade', center: [18.6946, 73.7681], wards: ['G1', 'G2'], population: 45000, waterDemand: 12 },
+    { id: 'wakad', name: 'Wakad', center: [18.5993, 73.7625], wards: ['H1', 'H2', 'H3'], population: 175000, waterDemand: 40 },
+    { id: 'thergaon', name: 'Thergaon', center: [18.6050, 73.7697], wards: ['I1', 'I2'], population: 95000, waterDemand: 22 },
+    { id: 'kalewadi', name: 'Kalewadi', center: [18.6282, 73.7858], wards: ['J1', 'J2'], population: 70000, waterDemand: 18 },
+    { id: 'sangvi', name: 'Sangvi', center: [18.5746, 73.8182], wards: ['K1', 'K2'], population: 95000, waterDemand: 22 },
+    { id: 'moshi', name: 'Moshi', center: [18.6729, 73.8473], wards: ['L1', 'L2'], population: 60000, waterDemand: 15 },
 ];
 
-// ============================================================================
-// PIPELINE NODES (Junctions, Valves, Reservoirs, Connections)
-// ============================================================================
+/**
+ * Official PCMC Water Department Contact (Government Sourced)
+ */
+const DEPARTMENT_CONTACT = {
+    name: 'PCMC Water Department (Sarathi Helpline)',
+    phone: '8888006666',
+    email: 'sarathi@pcmcindia.gov.in',
+    website: 'https://www.pcmcindia.gov.in'
+};
 
 const NODE_TYPES = {
-    RESERVOIR: 'reservoir',       // Water Treatment Plant / Storage
-    ESR: 'esr',                   // Elevated Storage Reservoir
-    JUNCTION: 'junction',         // Pipe Junction
-    VALVE: 'valve',               // Control Valve
-    CONNECTION: 'connection',     // End-user connection point
-    PUMP: 'pump',                 // Pumping Station
+    RESERVOIR: 'reservoir',
+    ESR: 'esr',
+    JUNCTION: 'junction',
+    VALVE: 'valve',
+    PUMP: 'pump',
 };
 
+// ============================================================================
+// PIPELINE NODES - HIGH DENSITY
+// ============================================================================
+
 const PIPELINE_NODES = [
-    // Water Treatment Plants (Primary Sources) - Updated with actual locations
-    {
-        id: 'wtp_pawana',
-        type: NODE_TYPES.RESERVOIR,
-        name: 'Pawana Water Treatment Plant', // Sector 23, Nigdi
-        coords: [18.6530, 73.7695],
-        capacity: 250, // MLD
-        area: null,
-        status: 'active',
-    },
-    {
-        id: 'wtp_bhama',
-        type: NODE_TYPES.RESERVOIR,
-        name: 'Bhama-Askhed WTP', // Kuruli, Pune
-        coords: [18.7212, 73.8468],
-        capacity: 150, // MLD
-        area: null,
-        status: 'active',
-    },
+    // === WATER TREATMENT PLANTS ===
+    { id: 'wtp_pawana', type: 'reservoir', name: 'Pawana WTP', coords: [18.6530, 73.7695], capacity: 250, status: 'active' },
+    { id: 'wtp_bhama', type: 'reservoir', name: 'Bhama-Askhed WTP', coords: [18.7050, 73.8350], capacity: 150, status: 'active' },
 
-    // Elevated Storage Reservoirs (ESRs) - Centered near respective areas
-    {
-        id: 'esr_pimpri',
-        type: NODE_TYPES.ESR,
-        name: 'Pimpri ESR',
-        coords: [18.6265, 73.8125],
-        capacity: 5, // ML
-        area: 'pimpri',
-        status: 'active',
-    },
-    {
-        id: 'esr_chinchwad',
-        type: NODE_TYPES.ESR,
-        name: 'Chinchwad ESR',
-        coords: [18.6280, 73.7815],
-        capacity: 6, // ML
-        area: 'chinchwad',
-        status: 'active',
-    },
-    {
-        id: 'esr_nigdi',
-        type: NODE_TYPES.ESR,
-        name: 'Nigdi ESR',
-        coords: [18.6525, 73.7690],
-        capacity: 4, // ML
-        area: 'nigdi',
-        status: 'active',
-    },
-    {
-        id: 'esr_bhosari',
-        type: NODE_TYPES.ESR,
-        name: 'Bhosari ESR',
-        coords: [18.6290, 73.8520],
-        capacity: 5, // ML
-        area: 'bhosari',
-        status: 'active',
-    },
-    {
-        id: 'esr_wakad',
-        type: NODE_TYPES.ESR,
-        name: 'Wakad ESR',
-        coords: [18.6000, 73.7630],
-        capacity: 4.5, // ML
-        area: 'wakad',
-        status: 'active',
-    },
+    // === PUMPING STATIONS ===
+    { id: 'pump_nigdi', type: 'pump', name: 'Nigdi Main Pump', coords: [18.6540, 73.7680], capacity: 200, status: 'active' },
+    { id: 'pump_bhosari', type: 'pump', name: 'Bhosari Pump', coords: [18.6350, 73.8400], capacity: 80, status: 'active' },
+    { id: 'pump_chinchwad', type: 'pump', name: 'Chinchwad Pump', coords: [18.6300, 73.7900], capacity: 100, status: 'active' },
 
-    // Major Junctions - Adjusted for new geography
-    {
-        id: 'jn_pimpri_main',
-        type: NODE_TYPES.JUNCTION,
-        name: 'Pimpri Main Junction',
-        coords: [18.6260, 73.8120],
-        area: 'pimpri',
-        status: 'active',
-    },
-    {
-        id: 'jn_chinchwad_main',
-        type: NODE_TYPES.JUNCTION,
-        name: 'Chinchwad Main Junction',
-        coords: [18.6275, 73.7805],
-        area: 'chinchwad',
-        status: 'active',
-    },
-    {
-        id: 'jn_akurdi',
-        type: NODE_TYPES.JUNCTION,
-        name: 'Akurdi Junction',
-        coords: [18.6500, 73.7780],
-        area: 'akurdi',
-        status: 'active',
-    },
-    {
-        id: 'jn_nigdi_central',
-        type: NODE_TYPES.JUNCTION,
-        name: 'Nigdi Central Junction',
-        coords: [18.6515, 73.7680],
-        area: 'nigdi',
-        status: 'active',
-    },
-    {
-        id: 'jn_bhosari_main',
-        type: NODE_TYPES.JUNCTION,
-        name: 'Bhosari Main Junction',
-        coords: [18.6280, 73.8510],
-        area: 'bhosari',
-        status: 'active',
-    },
-    {
-        id: 'jn_wakad_main',
-        type: NODE_TYPES.JUNCTION,
-        name: 'Wakad Main Junction',
-        coords: [18.5990, 73.7620],
-        area: 'wakad',
-        status: 'active',
-    },
-    {
-        id: 'jn_thergaon',
-        type: NODE_TYPES.JUNCTION,
-        name: 'Thergaon Junction',
-        coords: [18.6055, 73.7695],
-        area: 'thergaon',
-        status: 'active',
-    },
-    {
-        id: 'jn_talawade',
-        type: NODE_TYPES.JUNCTION,
-        name: 'Talawade Junction',
-        coords: [18.6940, 73.7680],
-        area: 'talawade',
-        status: 'active',
-    },
-    {
-        id: 'jn_dighi',
-        type: NODE_TYPES.JUNCTION,
-        name: 'Dighi Junction',
-        coords: [18.6170, 73.8520],
-        area: 'dighi',
-        status: 'active',
-    },
-    {
-        id: 'jn_kalewadi',
-        type: NODE_TYPES.JUNCTION,
-        name: 'Kalewadi Junction',
-        coords: [18.6280, 73.7860],
-        area: 'kalewadi',
-        status: 'active',
-    },
+    // === ESRs (Elevated Storage Reservoirs) ===
+    { id: 'esr_pimpri', type: 'esr', name: 'Pimpri ESR', coords: [18.6270, 73.8100], capacity: 5, area: 'pimpri', status: 'active' },
+    { id: 'esr_chinchwad', type: 'esr', name: 'Chinchwad ESR', coords: [18.6290, 73.7820], capacity: 6, area: 'chinchwad', status: 'active' },
+    { id: 'esr_nigdi', type: 'esr', name: 'Nigdi ESR', coords: [18.6500, 73.7700], capacity: 4, area: 'nigdi', status: 'active' },
+    { id: 'esr_bhosari', type: 'esr', name: 'Bhosari ESR', coords: [18.6320, 73.8480], capacity: 5, area: 'bhosari', status: 'active' },
+    { id: 'esr_wakad', type: 'esr', name: 'Wakad ESR', coords: [18.6000, 73.7620], capacity: 4, area: 'wakad', status: 'active' },
+    { id: 'esr_akurdi', type: 'esr', name: 'Akurdi ESR', coords: [18.6480, 73.7780], capacity: 3, area: 'akurdi', status: 'active' },
 
-    // Secondary Junctions for denser network
-    {
-        id: 'jn_pimpri_east',
-        type: NODE_TYPES.JUNCTION,
-        name: 'Pimpri East Junction',
-        coords: [18.6270, 73.8150],
-        area: 'pimpri',
-        status: 'active',
-    },
-    {
-        id: 'jn_pimpri_west',
-        type: NODE_TYPES.JUNCTION,
-        name: 'Pimpri West Junction',
-        coords: [18.6255, 73.8090],
-        area: 'pimpri',
-        status: 'active',
-    },
-    {
-        id: 'jn_chinchwad_north',
-        type: NODE_TYPES.JUNCTION,
-        name: 'Chinchwad North Junction',
-        coords: [18.6300, 73.7810],
-        area: 'chinchwad',
-        status: 'active',
-    },
-    {
-        id: 'jn_bhosari_east',
-        type: NODE_TYPES.JUNCTION,
-        name: 'Bhosari East Junction',
-        coords: [18.6290, 73.8560],
-        area: 'bhosari',
-        status: 'active',
-    },
-    {
-        id: 'jn_nigdi_south',
-        type: NODE_TYPES.JUNCTION,
-        name: 'Nigdi South Junction',
-        coords: [18.6490, 73.7685],
-        area: 'nigdi',
-        status: 'active',
-    },
+    // === PIMPRI ZONE (HIGH DENSITY - 15 nodes) ===
+    { id: 'jn_p01', type: 'junction', name: 'Pimpri Chowk', coords: [18.6261, 73.8122], area: 'pimpri' },
+    { id: 'jn_p02', type: 'junction', name: 'Kasarwadi', coords: [18.6220, 73.8180], area: 'pimpri' },
+    { id: 'jn_p03', type: 'junction', name: 'Finolex Chowk', coords: [18.6300, 73.8150], area: 'pimpri' },
+    { id: 'jn_p04', type: 'junction', name: 'Landewadi', coords: [18.6340, 73.8100], area: 'pimpri' },
+    { id: 'jn_p05', type: 'junction', name: 'Walhekarwadi', coords: [18.6200, 73.8050], area: 'pimpri' },
+    { id: 'jn_p06', type: 'junction', name: 'Shagun Chowk', coords: [18.6240, 73.8100], area: 'pimpri' },
+    { id: 'jn_p07', type: 'junction', name: 'Dapodi Bridge', coords: [18.6180, 73.8220], area: 'pimpri' },
+    { id: 'jn_p08', type: 'junction', name: 'PCMC Building', coords: [18.6280, 73.8080], area: 'pimpri' },
+    { id: 'v_p01', type: 'valve', name: 'Pimpri Valve 1', coords: [18.6255, 73.8130], area: 'pimpri' },
+    { id: 'v_p02', type: 'valve', name: 'Pimpri Valve 2', coords: [18.6230, 73.8160], area: 'pimpri' },
 
-    // Pumping Stations
-    {
-        id: 'pump_main',
-        type: NODE_TYPES.PUMP,
-        name: 'Main Pumping Station',
-        coords: [18.6520, 73.7690], // Near Nigdi WTP
-        capacity: 200, // MLD
-        area: null,
-        status: 'active',
-    },
-    {
-        id: 'pump_bhosari',
-        type: NODE_TYPES.PUMP,
-        name: 'Bhosari Booster Station',
-        coords: [18.6285, 73.8510],
-        capacity: 50, // MLD
-        area: 'bhosari',
-        status: 'active',
-    },
+    // === CHINCHWAD ZONE (HIGH DENSITY - 12 nodes) ===
+    { id: 'jn_c01', type: 'junction', name: 'Chinchwad Station', coords: [18.6350, 73.7950], area: 'chinchwad' },
+    { id: 'jn_c02', type: 'junction', name: 'Chaphekar Chowk', coords: [18.6280, 73.7850], area: 'chinchwad' },
+    { id: 'jn_c03', type: 'junction', name: 'Morya Gosavi', coords: [18.6220, 73.7800], area: 'chinchwad' },
+    { id: 'jn_c04', type: 'junction', name: 'Bijlinagar', coords: [18.6380, 73.7880], area: 'chinchwad' },
+    { id: 'jn_c05', type: 'junction', name: 'Auto Cluster', coords: [18.6320, 73.8000], area: 'chinchwad' },
+    { id: 'jn_c06', type: 'junction', name: 'Sant Tukaramnagar', coords: [18.6250, 73.7780], area: 'chinchwad' },
+    { id: 'jn_c07', type: 'junction', name: 'Empire Estate', coords: [18.6360, 73.7820], area: 'chinchwad' },
+    { id: 'v_c01', type: 'valve', name: 'Chinchwad Valve 1', coords: [18.6310, 73.7900], area: 'chinchwad' },
 
-    // Control Valves
-    {
-        id: 'valve_pimpri_1',
-        type: NODE_TYPES.VALVE,
-        name: 'Pimpri Control Valve 1',
-        coords: [18.6262, 73.8123],
-        area: 'pimpri',
-        status: 'active',
-    },
-    {
-        id: 'valve_chinchwad_1',
-        type: NODE_TYPES.VALVE,
-        name: 'Chinchwad Control Valve 1',
-        coords: [18.6278, 73.7810],
-        area: 'chinchwad',
-        status: 'active',
-    },
-    {
-        id: 'valve_bhosari_1',
-        type: NODE_TYPES.VALVE,
-        name: 'Bhosari Control Valve 1',
-        coords: [18.6280, 73.8512],
-        area: 'bhosari',
-        status: 'active',
-    },
+    // === AKURDI-NIGDI ZONE (MEDIUM DENSITY - 10 nodes) ===
+    { id: 'jn_a01', type: 'junction', name: 'Akurdi Station', coords: [18.6480, 73.7760], area: 'akurdi' },
+    { id: 'jn_a02', type: 'junction', name: 'Pradhikaran', coords: [18.6550, 73.7720], area: 'akurdi' },
+    { id: 'jn_n01', type: 'junction', name: 'Bhakti Shakti', coords: [18.6580, 73.7650], area: 'nigdi' },
+    { id: 'jn_n02', type: 'junction', name: 'Sector 23', coords: [18.6520, 73.7620], area: 'nigdi' },
+    { id: 'jn_n03', type: 'junction', name: 'Yamuna Nagar', coords: [18.6620, 73.7700], area: 'nigdi' },
+    { id: 'jn_n04', type: 'junction', name: 'Transport Nagar', coords: [18.6650, 73.7600], area: 'nigdi' },
+    { id: 'v_n01', type: 'valve', name: 'Nigdi Valve', coords: [18.6560, 73.7680], area: 'nigdi' },
+
+    // === BHOSARI-DIGHI ZONE (MEDIUM DENSITY - 8 nodes) ===
+    { id: 'jn_b01', type: 'junction', name: 'Bhosari MIDC', coords: [18.6300, 73.8500], area: 'bhosari' },
+    { id: 'jn_b02', type: 'junction', name: 'Alandi Road', coords: [18.6380, 73.8550], area: 'bhosari' },
+    { id: 'jn_b03', type: 'junction', name: 'Dighi Gaon', coords: [18.6150, 73.8520], area: 'dighi' },
+    { id: 'jn_b04', type: 'junction', name: 'Telco Road', coords: [18.6250, 73.8450], area: 'bhosari' },
+    { id: 'v_b01', type: 'valve', name: 'Bhosari Valve', coords: [18.6280, 73.8480], area: 'bhosari' },
+
+    // === WAKAD-THERGAON ZONE (MEDIUM DENSITY - 8 nodes) ===
+    { id: 'jn_w01', type: 'junction', name: 'Wakad Bridge', coords: [18.5980, 73.7600], area: 'wakad' },
+    { id: 'jn_w02', type: 'junction', name: 'Kaspate Wasti', coords: [18.5940, 73.7680], area: 'wakad' },
+    { id: 'jn_w03', type: 'junction', name: 'Datta Mandir', coords: [18.6020, 73.7550], area: 'wakad' },
+    { id: 'jn_t01', type: 'junction', name: 'Dange Chowk', coords: [18.6080, 73.7720], area: 'thergaon' },
+    { id: 'jn_t02', type: 'junction', name: 'Thergaon Gaon', coords: [18.6050, 73.7780], area: 'thergaon' },
+    { id: 'v_w01', type: 'valve', name: 'Wakad Valve', coords: [18.6000, 73.7640], area: 'wakad' },
+
+    // === KALEWADI-RAHATNI (MEDIUM - 4 nodes) ===
+    { id: 'jn_k01', type: 'junction', name: 'Kalewadi Phata', coords: [18.6280, 73.7860], area: 'kalewadi' },
+    { id: 'jn_k02', type: 'junction', name: 'Rahatni', coords: [18.6120, 73.7900], area: 'kalewadi' },
+
+    // === SANGVI (MEDIUM - 4 nodes) ===
+    { id: 'jn_s01', type: 'junction', name: 'Sangvi Phata', coords: [18.5750, 73.8150], area: 'sangvi' },
+    { id: 'jn_s02', type: 'junction', name: 'Pimple Gurav', coords: [18.5850, 73.8220], area: 'sangvi' },
+
+    // === MOSHI-TALAWADE (LOW DENSITY - 4 nodes) ===
+    { id: 'jn_m01', type: 'junction', name: 'Moshi Toll', coords: [18.6750, 73.8500], area: 'moshi' },
+    { id: 'jn_m02', type: 'junction', name: 'Chikhali', coords: [18.6850, 73.8300], area: 'moshi' },
+    { id: 'jn_tl01', type: 'junction', name: 'Talawade IT Park', coords: [18.6900, 73.7700], area: 'talawade' },
 ];
 
 // ============================================================================
-// PIPELINE EDGES (Pipe Segments connecting nodes)
+// PIPELINE EDGES - FULLY CONNECTED NETWORK
 // ============================================================================
 
-const PIPE_MATERIALS = {
-    DI: 'Ductile Iron',
-    CI: 'Cast Iron',
-    HDPE: 'High-Density Polyethylene',
-    PVC: 'PVC',
-    MS: 'Mild Steel',
-};
-
 const PIPELINE_EDGES = [
-    // Main Transmission Lines from WTPs
-    {
-        id: 'pipe_001',
-        from: 'wtp_pawana',
-        to: 'pump_main',
-        distance: 5.2, // km
-        diameter: 900, // mm
-        material: 'DI',
-        yearInstalled: 2010,
-        status: 'active',
-    },
-    {
-        id: 'pipe_002',
-        from: 'pump_main',
-        to: 'esr_chinchwad',
-        distance: 3.5,
-        diameter: 700,
-        material: 'DI',
-        yearInstalled: 2010,
-        status: 'active',
-    },
-    {
-        id: 'pipe_003',
-        from: 'pump_main',
-        to: 'jn_chinchwad_main',
-        distance: 2.8,
-        diameter: 600,
-        material: 'DI',
-        yearInstalled: 2012,
-        status: 'active',
-    },
-    {
-        id: 'pipe_004',
-        from: 'wtp_bhama',
-        to: 'esr_bhosari',
-        distance: 6.5,
-        diameter: 600,
-        material: 'DI',
-        yearInstalled: 2015,
-        status: 'active',
-    },
+    // === MAIN TRANSMISSION (WTP -> Pumps -> ESRs) ===
+    { id: 'tx_01', from: 'wtp_pawana', to: 'pump_nigdi', diameter: 1200, material: 'MS', status: 'active' },
+    { id: 'tx_02', from: 'pump_nigdi', to: 'esr_nigdi', diameter: 900, material: 'DI', status: 'active' },
+    { id: 'tx_03', from: 'pump_nigdi', to: 'esr_akurdi', diameter: 800, material: 'DI', status: 'active' },
+    { id: 'tx_04', from: 'pump_nigdi', to: 'pump_chinchwad', diameter: 1000, material: 'MS', status: 'active' },
+    { id: 'tx_05', from: 'pump_chinchwad', to: 'esr_chinchwad', diameter: 700, material: 'DI', status: 'active' },
+    { id: 'tx_06', from: 'pump_chinchwad', to: 'esr_pimpri', diameter: 800, material: 'DI', status: 'active' },
+    { id: 'tx_07', from: 'pump_chinchwad', to: 'esr_wakad', diameter: 700, material: 'DI', status: 'active' },
+    { id: 'tx_08', from: 'wtp_bhama', to: 'pump_bhosari', diameter: 1000, material: 'MS', status: 'active' },
+    { id: 'tx_09', from: 'pump_bhosari', to: 'esr_bhosari', diameter: 700, material: 'DI', status: 'active' },
 
-    // Distribution from ESRs
-    {
-        id: 'pipe_005',
-        from: 'esr_pimpri',
-        to: 'jn_pimpri_main',
-        distance: 0.8,
-        diameter: 450,
-        material: 'DI',
-        yearInstalled: 2008,
-        status: 'active',
-    },
-    {
-        id: 'pipe_006',
-        from: 'esr_chinchwad',
-        to: 'jn_chinchwad_main',
-        distance: 0.6,
-        diameter: 450,
-        material: 'DI',
-        yearInstalled: 2010,
-        status: 'active',
-    },
-    {
-        id: 'pipe_007',
-        from: 'esr_nigdi',
-        to: 'jn_nigdi_central',
-        distance: 0.5,
-        diameter: 400,
-        material: 'DI',
-        yearInstalled: 2012,
-        status: 'active',
-    },
-    {
-        id: 'pipe_008',
-        from: 'esr_bhosari',
-        to: 'jn_bhosari_main',
-        distance: 0.7,
-        diameter: 450,
-        material: 'DI',
-        yearInstalled: 2015,
-        status: 'active',
-    },
-    {
-        id: 'pipe_009',
-        from: 'esr_wakad',
-        to: 'jn_wakad_main',
-        distance: 0.4,
-        diameter: 400,
-        material: 'DI',
-        yearInstalled: 2018,
-        status: 'active',
-    },
+    // === ESR TO LOCAL DISTRIBUTION ===
+    { id: 'ds_01', from: 'esr_pimpri', to: 'jn_p01', diameter: 500, status: 'active' },
+    { id: 'ds_02', from: 'esr_chinchwad', to: 'jn_c02', diameter: 500, status: 'active' },
+    { id: 'ds_03', from: 'esr_nigdi', to: 'jn_n01', diameter: 500, status: 'active' },
+    { id: 'ds_04', from: 'esr_akurdi', to: 'jn_a01', diameter: 450, status: 'active' },
+    { id: 'ds_05', from: 'esr_bhosari', to: 'jn_b01', diameter: 500, status: 'active' },
+    { id: 'ds_06', from: 'esr_wakad', to: 'jn_w01', diameter: 450, status: 'active' },
 
-    // Inter-ESR connections (Ring Main)
-    {
-        id: 'pipe_010',
-        from: 'jn_chinchwad_main',
-        to: 'jn_pimpri_main',
-        distance: 2.2,
-        diameter: 500,
-        material: 'DI',
-        yearInstalled: 2010,
-        status: 'active',
-    },
-    {
-        id: 'pipe_011',
-        from: 'jn_chinchwad_main',
-        to: 'jn_akurdi',
-        distance: 1.2,
-        diameter: 400,
-        material: 'DI',
-        yearInstalled: 2012,
-        status: 'active',
-    },
-    {
-        id: 'pipe_012',
-        from: 'jn_chinchwad_main',
-        to: 'jn_nigdi_central',
-        distance: 1.8,
-        diameter: 450,
-        material: 'DI',
-        yearInstalled: 2012,
-        status: 'active',
-    },
-    {
-        id: 'pipe_013',
-        from: 'jn_nigdi_central',
-        to: 'jn_talawade',
-        distance: 1.5,
-        diameter: 350,
-        material: 'HDPE',
-        yearInstalled: 2018,
-        status: 'active',
-    },
-    {
-        id: 'pipe_014',
-        from: 'jn_pimpri_main',
-        to: 'jn_bhosari_main',
-        distance: 5.5,
-        diameter: 400,
-        material: 'DI',
-        yearInstalled: 2014,
-        status: 'active',
-    },
+    // === PIMPRI LOCAL GRID (Dense) ===
+    { id: 'lp_01', from: 'jn_p01', to: 'jn_p02', diameter: 300 },
+    { id: 'lp_02', from: 'jn_p01', to: 'jn_p03', diameter: 300 },
+    { id: 'lp_03', from: 'jn_p01', to: 'jn_p06', diameter: 350 },
+    { id: 'lp_04', from: 'jn_p02', to: 'jn_p07', diameter: 250 },
+    { id: 'lp_05', from: 'jn_p03', to: 'jn_p04', diameter: 300 },
+    { id: 'lp_06', from: 'jn_p04', to: 'jn_p08', diameter: 300 },
+    { id: 'lp_07', from: 'jn_p05', to: 'jn_p06', diameter: 300 },
+    { id: 'lp_08', from: 'jn_p05', to: 'jn_p08', diameter: 250 },
+    { id: 'lp_09', from: 'jn_p06', to: 'jn_p08', diameter: 350 },
+    { id: 'lp_10', from: 'jn_p01', to: 'v_p01', diameter: 300 },
+    { id: 'lp_11', from: 'jn_p02', to: 'v_p02', diameter: 250 },
+    { id: 'lp_12', from: 'v_p01', to: 'v_p02', diameter: 250 },
+    { id: 'lp_13', from: 'jn_p03', to: 'jn_p02', diameter: 250 },
+    { id: 'lp_14', from: 'jn_p07', to: 'jn_b03', diameter: 300 },
 
-    // Secondary Distribution Lines
-    {
-        id: 'pipe_015',
-        from: 'jn_pimpri_main',
-        to: 'jn_pimpri_east',
-        distance: 1.2,
-        diameter: 300,
-        material: 'DI',
-        yearInstalled: 2010,
-        status: 'active',
-    },
-    {
-        id: 'pipe_016',
-        from: 'jn_pimpri_main',
-        to: 'jn_pimpri_west',
-        distance: 0.9,
-        diameter: 300,
-        material: 'DI',
-        yearInstalled: 2010,
-        status: 'active',
-    },
-    {
-        id: 'pipe_017',
-        from: 'jn_pimpri_west',
-        to: 'jn_kalewadi',
-        distance: 0.7,
-        diameter: 250,
-        material: 'HDPE',
-        yearInstalled: 2016,
-        status: 'active',
-    },
-    {
-        id: 'pipe_018',
-        from: 'jn_chinchwad_main',
-        to: 'jn_chinchwad_north',
-        distance: 0.8,
-        diameter: 350,
-        material: 'DI',
-        yearInstalled: 2012,
-        status: 'active',
-    },
-    {
-        id: 'pipe_019',
-        from: 'jn_nigdi_central',
-        to: 'jn_nigdi_south',
-        distance: 0.6,
-        diameter: 300,
-        material: 'HDPE',
-        yearInstalled: 2018,
-        status: 'active',
-    },
-    {
-        id: 'pipe_020',
-        from: 'jn_bhosari_main',
-        to: 'jn_bhosari_east',
-        distance: 0.9,
-        diameter: 300,
-        material: 'DI',
-        yearInstalled: 2015,
-        status: 'active',
-    },
-    {
-        id: 'pipe_021',
-        from: 'jn_bhosari_main',
-        to: 'jn_dighi',
-        distance: 1.3,
-        diameter: 300,
-        material: 'DI',
-        yearInstalled: 2015,
-        status: 'active',
-    },
-    {
-        id: 'pipe_022',
-        from: 'jn_chinchwad_main',
-        to: 'jn_thergaon',
-        distance: 1.5,
-        diameter: 350,
-        material: 'DI',
-        yearInstalled: 2014,
-        status: 'active',
-    },
-    {
-        id: 'pipe_023',
-        from: 'jn_thergaon',
-        to: 'jn_wakad_main',
-        distance: 1.0,
-        diameter: 350,
-        material: 'DI',
-        yearInstalled: 2016,
-        status: 'active',
-    },
-    {
-        id: 'pipe_024',
-        from: 'pump_main',
-        to: 'esr_pimpri',
-        distance: 4.0,
-        diameter: 600,
-        material: 'DI',
-        yearInstalled: 2008,
-        status: 'active',
-    },
-    {
-        id: 'pipe_025',
-        from: 'pump_bhosari',
-        to: 'jn_bhosari_main',
-        distance: 0.8,
-        diameter: 400,
-        material: 'DI',
-        yearInstalled: 2015,
-        status: 'active',
-    },
+    // === CHINCHWAD LOCAL GRID (Dense) ===
+    { id: 'lc_01', from: 'jn_c02', to: 'jn_c01', diameter: 400 },
+    { id: 'lc_02', from: 'jn_c02', to: 'jn_c03', diameter: 300 },
+    { id: 'lc_03', from: 'jn_c02', to: 'jn_c06', diameter: 300 },
+    { id: 'lc_04', from: 'jn_c01', to: 'jn_c04', diameter: 350 },
+    { id: 'lc_05', from: 'jn_c01', to: 'jn_c05', diameter: 350 },
+    { id: 'lc_06', from: 'jn_c04', to: 'jn_c07', diameter: 300 },
+    { id: 'lc_07', from: 'jn_c05', to: 'jn_c04', diameter: 300 },
+    { id: 'lc_08', from: 'jn_c03', to: 'jn_c06', diameter: 250 },
+    { id: 'lc_09', from: 'jn_c01', to: 'v_c01', diameter: 350 },
+    { id: 'lc_10', from: 'jn_c07', to: 'jn_c02', diameter: 300 },
 
-    // Valve connections
-    {
-        id: 'pipe_026',
-        from: 'jn_pimpri_main',
-        to: 'valve_pimpri_1',
-        distance: 0.2,
-        diameter: 300,
-        material: 'DI',
-        yearInstalled: 2010,
-        status: 'active',
-    },
-    {
-        id: 'pipe_027',
-        from: 'jn_chinchwad_main',
-        to: 'valve_chinchwad_1',
-        distance: 0.15,
-        diameter: 350,
-        material: 'DI',
-        yearInstalled: 2012,
-        status: 'active',
-    },
-    {
-        id: 'pipe_028',
-        from: 'jn_bhosari_main',
-        to: 'valve_bhosari_1',
-        distance: 0.2,
-        diameter: 300,
-        material: 'DI',
-        yearInstalled: 2015,
-        status: 'active',
-    },
+    // === AKURDI-NIGDI GRID ===
+    { id: 'ln_01', from: 'jn_a01', to: 'jn_a02', diameter: 350 },
+    { id: 'ln_02', from: 'jn_a01', to: 'jn_n01', diameter: 400 },
+    { id: 'ln_03', from: 'jn_a02', to: 'jn_n03', diameter: 300 },
+    { id: 'ln_04', from: 'jn_n01', to: 'jn_n02', diameter: 350 },
+    { id: 'ln_05', from: 'jn_n01', to: 'jn_n03', diameter: 300 },
+    { id: 'ln_06', from: 'jn_n02', to: 'jn_n04', diameter: 300 },
+    { id: 'ln_07', from: 'jn_n03', to: 'jn_n04', diameter: 250 },
+    { id: 'ln_08', from: 'jn_n01', to: 'v_n01', diameter: 300 },
 
-    // Additional ring connections for redundancy
-    {
-        id: 'pipe_029',
-        from: 'jn_akurdi',
-        to: 'jn_nigdi_south',
-        distance: 1.4,
-        diameter: 300,
-        material: 'HDPE',
-        yearInstalled: 2019,
-        status: 'active',
-    },
-    {
-        id: 'pipe_030',
-        from: 'jn_kalewadi',
-        to: 'jn_thergaon',
-        distance: 1.0,
-        diameter: 250,
-        material: 'HDPE',
-        yearInstalled: 2017,
-        status: 'active',
-    },
-    {
-        id: 'pipe_031',
-        from: 'pump_main',
-        to: 'esr_nigdi',
-        distance: 5.5,
-        diameter: 500,
-        material: 'DI',
-        yearInstalled: 2012,
-        status: 'active',
-    },
-    {
-        id: 'pipe_032',
-        from: 'pump_main',
-        to: 'esr_wakad',
-        distance: 6.0,
-        diameter: 450,
-        material: 'DI',
-        yearInstalled: 2018,
-        status: 'active',
-    },
+    // === BHOSARI-DIGHI GRID ===
+    { id: 'lb_01', from: 'jn_b01', to: 'jn_b02', diameter: 350 },
+    { id: 'lb_02', from: 'jn_b01', to: 'jn_b03', diameter: 300 },
+    { id: 'lb_03', from: 'jn_b01', to: 'jn_b04', diameter: 350 },
+    { id: 'lb_04', from: 'jn_b02', to: 'jn_m01', diameter: 300 },
+    { id: 'lb_05', from: 'jn_b01', to: 'v_b01', diameter: 300 },
+    { id: 'lb_06', from: 'jn_b04', to: 'jn_p04', diameter: 350 },
+
+    // === WAKAD-THERGAON GRID ===
+    { id: 'lw_01', from: 'jn_w01', to: 'jn_w02', diameter: 300 },
+    { id: 'lw_02', from: 'jn_w01', to: 'jn_w03', diameter: 300 },
+    { id: 'lw_03', from: 'jn_w02', to: 'jn_t01', diameter: 350 },
+    { id: 'lw_04', from: 'jn_t01', to: 'jn_t02', diameter: 300 },
+    { id: 'lw_05', from: 'jn_w01', to: 'v_w01', diameter: 300 },
+    { id: 'lw_06', from: 'jn_t02', to: 'jn_k01', diameter: 300 },
+
+    // === KALEWADI-RAHATNI ===
+    { id: 'lk_01', from: 'jn_k01', to: 'jn_k02', diameter: 300 },
+    { id: 'lk_02', from: 'jn_k01', to: 'jn_c07', diameter: 350 },
+
+    // === SANGVI ===
+    { id: 'ls_01', from: 'jn_s01', to: 'jn_s02', diameter: 300 },
+    { id: 'ls_02', from: 'jn_s02', to: 'jn_t02', diameter: 300 },
+    { id: 'ls_03', from: 'jn_w02', to: 'jn_s01', diameter: 350 },
+
+    // === MOSHI-TALAWADE (Sparse) ===
+    { id: 'lm_01', from: 'jn_m01', to: 'jn_m02', diameter: 250 },
+    { id: 'lm_02', from: 'jn_m02', to: 'jn_tl01', diameter: 200 },
+    { id: 'lm_03', from: 'jn_tl01', to: 'jn_n04', diameter: 250 },
+
+    // === CROSS-REGION CONNECTORS (Ring Main) ===
+    { id: 'xr_01', from: 'jn_p05', to: 'jn_c03', diameter: 400 },
+    { id: 'xr_02', from: 'jn_c05', to: 'jn_p03', diameter: 400 },
+    { id: 'xr_03', from: 'jn_c04', to: 'jn_a01', diameter: 400 },
+    { id: 'xr_04', from: 'jn_b04', to: 'jn_c05', diameter: 350 },
+    { id: 'xr_05', from: 'jn_n02', to: 'jn_tl01', diameter: 300 },
+    { id: 'xr_06', from: 'jn_k02', to: 'jn_w02', diameter: 300 },
+    { id: 'xr_07', from: 'jn_t01', to: 'jn_c07', diameter: 350 },
+    { id: 'xr_08', from: 'jn_s02', to: 'jn_p07', diameter: 300 },
 ];
 
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
 
-/**
- * Build adjacency list from pipeline edges
- */
 function buildPipelineGraph() {
     const graph = {};
-
-    // Initialize all nodes
     PIPELINE_NODES.forEach(node => {
-        graph[node.id] = {
-            ...node,
-            neighbors: [],
-        };
+        graph[node.id] = { ...node, neighbors: [] };
     });
-
-    // Add edges
     PIPELINE_EDGES.forEach(edge => {
-        if (graph[edge.from] && graph[edge.to]) {
-            graph[edge.from].neighbors.push({
-                nodeId: edge.to,
-                edgeId: edge.id,
-                distance: edge.distance,
-                diameter: edge.diameter,
-            });
-            // Bidirectional for water flow modeling
-            graph[edge.to].neighbors.push({
-                nodeId: edge.from,
-                edgeId: edge.id,
-                distance: edge.distance,
-                diameter: edge.diameter,
-            });
+        const fromNode = graph[edge.from];
+        const toNode = graph[edge.to];
+        if (fromNode && toNode) {
+            // Calculate actual distance between nodes using Haversine formula
+            const distance = getHaversineDistance(
+                fromNode.coords[0], fromNode.coords[1],
+                toNode.coords[0], toNode.coords[1]
+            );
+
+            // Attach distance to the edge object itself for Dijkstra total calculation
+            edge.distance = distance;
+
+            fromNode.neighbors.push({ nodeId: edge.to, edgeId: edge.id, diameter: edge.diameter, distance });
+            toNode.neighbors.push({ nodeId: edge.from, edgeId: edge.id, diameter: edge.diameter, distance });
         }
     });
-
     return graph;
 }
 
-/**
- * Find the nearest pipeline node to given coordinates
- */
 function findNearestNode(lat, lng, nodeTypes = null) {
     let minDistance = Infinity;
     let nearestNode = null;
-
-    const nodesToSearch = nodeTypes
-        ? PIPELINE_NODES.filter(n => nodeTypes.includes(n.type))
-        : PIPELINE_NODES;
-
-    nodesToSearch.forEach(node => {
+    const nodes = nodeTypes ? PIPELINE_NODES.filter(n => nodeTypes.includes(n.type)) : PIPELINE_NODES;
+    nodes.forEach(node => {
         const distance = getHaversineDistance(lat, lng, node.coords[0], node.coords[1]);
-        if (distance < minDistance) {
-            minDistance = distance;
-            nearestNode = node;
-        }
+        if (distance < minDistance) { minDistance = distance; nearestNode = node; }
     });
-
     return { node: nearestNode, distance: minDistance };
 }
 
-/**
- * Calculate Haversine distance in km
- */
 function getHaversineDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371; // Earth's radius in km
-    const dLat = toRad(lat2 - lat1);
-    const dLon = toRad(lon2 - lon1);
-    const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-        Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function toRad(deg) {
-    return deg * (Math.PI / 180);
-}
+function getAreaById(areaId) { return PCMC_AREAS.find(a => a.id === areaId) || null; }
+function getNodeById(nodeId) { return PIPELINE_NODES.find(n => n.id === nodeId) || null; }
+function getEdgeById(edgeId) { return PIPELINE_EDGES.find(e => e.id === edgeId) || null; }
+function getNodesByType(type) { return PIPELINE_NODES.filter(n => n.type === type); }
 
 /**
- * Get area info by ID
+ * Find the nearest PCMC area based on lat/lng coordinates
+ * Returns area name and ward for GIS lookup
  */
-function getAreaById(areaId) {
-    return PCMC_AREAS.find(a => a.id === areaId) || null;
-}
-
-/**
- * Get node by ID
- */
-function getNodeById(nodeId) {
-    return PIPELINE_NODES.find(n => n.id === nodeId) || null;
-}
-
-/**
- * Get edge by ID
- */
-function getEdgeById(edgeId) {
-    return PIPELINE_EDGES.find(e => e.id === edgeId) || null;
-}
-
-/**
- * Get all nodes of a specific type
- */
-function getNodesByType(type) {
-    return PIPELINE_NODES.filter(n => n.type === type);
-}
-
-/**
- * Get all pipelines in an area
- */
-function getPipelinesByArea(areaId) {
-    const areaNodes = PIPELINE_NODES.filter(n => n.area === areaId).map(n => n.id);
-    return PIPELINE_EDGES.filter(e =>
-        areaNodes.includes(e.from) || areaNodes.includes(e.to)
-    );
-}
-
-// ============================================================================
-// SPATIAL UTILITIES
-// ============================================================================
-
 function findNearestArea(lat, lng) {
-    let nearest = null;
     let minDistance = Infinity;
+    let nearestArea = null;
 
     PCMC_AREAS.forEach(area => {
-        const dist = getHaversineDistance(lat, lng, area.center[0], area.center[1]);
-        if (dist < minDistance) {
-            minDistance = dist;
-            nearest = area;
+        const distance = getHaversineDistance(lat, lng, area.center[0], area.center[1]);
+        if (distance < minDistance) {
+            minDistance = distance;
+            nearestArea = area;
         }
     });
 
-    if (!nearest) return { area: 'Unknown', ward: 'General' };
-
-    // Simulate Ward assignment (since we don't have ward polygons)
-    // Deterministic hash based on coords to pick a ward from the area's list
-    const coordSum = Math.abs(lat + lng) * 10000;
-    const wardIndex = Math.floor(coordSum) % nearest.wards.length;
+    if (nearestArea) {
+        // Assign to first ward of the area
+        const ward = nearestArea.wards && nearestArea.wards.length > 0 ? nearestArea.wards[0] : 'General';
+        return {
+            area: nearestArea.name,
+            areaId: nearestArea.id,
+            ward: ward,
+            distance: minDistance,
+            center: nearestArea.center
+        };
+    }
 
     return {
-        area: nearest.name,
-        ward: nearest.wards[wardIndex]
+        area: 'Unknown Area',
+        areaId: null,
+        ward: 'General',
+        distance: null,
+        center: null
     };
 }
 
 module.exports = {
-    PCMC_AREAS,
-    PIPELINE_NODES,
-    PIPELINE_EDGES,
-    NODE_TYPES,
-    PIPE_MATERIALS,
-    buildPipelineGraph,
-    findNearestNode,
-    findNearestArea,
-    getHaversineDistance,
-    getAreaById,
-    getNodeById,
-    getEdgeById,
-    getNodesByType,
-    getPipelinesByArea,
+    PCMC_AREAS, PIPELINE_NODES, PIPELINE_EDGES, NODE_TYPES, DEPARTMENT_CONTACT,
+    buildPipelineGraph, findNearestNode, findNearestArea, getHaversineDistance,
+    getAreaById, getNodeById, getEdgeById, getNodesByType
 };

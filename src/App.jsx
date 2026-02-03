@@ -18,6 +18,7 @@ import { useAuth } from './AuthContext';
 import Profile from './components/Profile';
 import OfficerComplaints from './components/OfficerComplaints';
 import WaterIntelligenceDashboard from './components/WaterIntelligenceDashboard';
+import GuestReportPage from './components/GuestReportPage';
 
 // New comprehensive homepage sections
 
@@ -93,6 +94,7 @@ function Layout() {
                 <Route path="/" element={<HomePage />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/guest-report" element={<GuestReportPage />} />
                 <Route path="/presentation" element={<PresentationPage />} />
                 <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
 

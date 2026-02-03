@@ -84,20 +84,27 @@ L.Marker.prototype.options.icon = DefaultIcon;
 
 // Custom icons
 const createCustomIcon = (color, type = 'default') => {
-    const svg = type === 'critical'
-        ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" width="32" height="32">
-             <circle cx="12" cy="12" r="10" fill="${color}" stroke="#fff" stroke-width="2"/>
-             <text x="12" y="16" text-anchor="middle" fill="white" font-size="12" font-weight="bold">!</text>
-           </svg>`
-        : `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" width="24" height="24">
-             <circle cx="12" cy="12" r="8" fill="${color}" stroke="#fff" stroke-width="2"/>
-           </svg>`;
+    // Exclamation mark for all complaints (user request), slightly larger for critical
+    const size = type === 'critical' ? 32 : 28;
+
+    // SVG with Exclamation mark for complaints, or a Pin for connections
+    let svg = '';
+    if (type === 'connection' || type === 'target') {
+        svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" width="${size}" height="${size}">
+                 <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-12-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" filter="drop-shadow(0 2px 2px rgba(0,0,0,0.5))" stroke="#fff" stroke-width="1"/>
+               </svg>`;
+    } else {
+        svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" width="${size}" height="${size}">
+                 <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 18a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm1.5-6.5a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 3 0v6.5z" fill="${color}" stroke="#fff" stroke-width="1.5"/>
+               </svg>`;
+    }
 
     return L.divIcon({
         html: svg,
         className: 'custom-marker',
-        iconSize: type === 'critical' ? [32, 32] : [24, 24],
-        iconAnchor: type === 'critical' ? [16, 16] : [12, 12],
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size],
+        popupAnchor: [0, -size]
     });
 };
 
@@ -247,7 +254,7 @@ const PipelineMap = ({
     selectedComplaint,
     onComplaintSelect,
     showPipelines = true,
-    highlightedPath = null,
+    plannedConnections = [], // Changed from highlightedPath
     newConnectionTarget = null,
     pipelineData = { nodes: [], edges: [], nodeTypes: {} },
     layerVisibility = {
@@ -262,7 +269,8 @@ const PipelineMap = ({
     },
     isPickingLocation = false,
     onMapClick = null,
-    onClusterSelect = null
+    onClusterSelect = null,
+    onDeleteConnection = null
 }) => {
     const theme = useTheme();
 
@@ -286,7 +294,8 @@ const PipelineMap = ({
             const toNode = getNodeById(edge.to);
             if (!fromNode || !toNode) return null;
 
-            const isHighlighted = highlightedPath?.edges?.includes(edge.id);
+            // Check if edge is part of ANY planner connection
+            const isHighlighted = plannedConnections.some(conn => conn.edges?.includes(edge.id));
 
             // Determine color based on diameter and status
             let color = '#3b82f6'; // Default blue
@@ -305,7 +314,7 @@ const PipelineMap = ({
                 dashArray: edge.status !== 'active' ? '5, 10' : null,
             };
         }).filter(Boolean);
-    }, [layerVisibility.pipelines, highlightedPath, pipelineData]);
+    }, [layerVisibility.pipelines, plannedConnections, pipelineData]);
 
     // Complaint markers with severity styling
     const complaintMarkers = useMemo(() => {
@@ -510,45 +519,113 @@ const PipelineMap = ({
                     </Marker>
                 ))}
 
-                {/* Proposal: New Connection Line */}
-                {highlightedPath && highlightedPath.connectionPoint && newConnectionTarget && (
-                    <Polyline
-                        positions={[
-                            highlightedPath.connectionPoint.coords,
-                            newConnectionTarget
-                        ]}
-                        pathOptions={{
-                            color: '#22c55e',
-                            weight: 4,
-                            dashArray: '10, 10',
-                            opacity: 0.8,
-                            lineCap: 'round'
-                        }}
-                    >
-                        <Popup>
-                            <Typography variant="subtitle2" fontWeight={700}>
-                                Proposed New Pipeline
-                            </Typography>
-                            <Typography variant="caption" display="block">
-                                Length: {highlightedPath.newPipeRequired?.estimatedLength} m
-                            </Typography>
-                            <Typography variant="caption" display="block" sx={{ color: 'primary.main', fontWeight: 700 }}>
-                                Est. Cost: {highlightedPath.newPipeRequired?.estimatedCost?.formatted}
-                            </Typography>
-                        </Popup>
-                    </Polyline>
-                )}
+                {/* Proposal: New Connection Lines & Markers (Multiple) */}
+                {plannedConnections.map((conn, idx) => (
+                    <React.Fragment key={`planned-conn-group-${idx}`}>
+                        {conn.connectionPoint && conn.targetCoords && (
+                            <>
+                                <Polyline
+                                    positions={[
+                                        conn.connectionPoint.coords,
+                                        conn.targetCoords
+                                    ]}
+                                    pathOptions={{
+                                        color: '#10b981',
+                                        weight: 5,
+                                        dashArray: '8, 8',
+                                        opacity: 0.9,
+                                        lineCap: 'round'
+                                    }}
+                                />
+                                <Marker
+                                    position={conn.targetCoords}
+                                    icon={createCustomIcon('#10b981', 'connection')}
+                                >
+                                    <Popup>
+                                        <Box sx={{ minWidth: 220, p: 0.5 }}>
+                                            <Typography variant="subtitle1" fontWeight={800} color="success.main" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                💧 Connection #{idx + 1}
+                                            </Typography>
+
+                                            <Paper variant="outlined" sx={{ p: 1, mb: 1, bgcolor: 'success.50' }}>
+                                                <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                                                    CONNECTING TO
+                                                </Typography>
+                                                <Typography variant="body2" fontWeight={700}>
+                                                    {conn.connectionPoint?.name}
+                                                </Typography>
+                                                <Typography variant="caption" color="text.secondary">
+                                                    via {conn.waterSource?.name}
+                                                </Typography>
+                                            </Paper>
+
+                                            <Grid container spacing={1}>
+                                                <Grid size={6}>
+                                                    <Typography variant="caption" color="text.secondary" display="block">
+                                                        DISTANCE
+                                                    </Typography>
+                                                    <Typography variant="body2" fontWeight={700}>
+                                                        {conn.newPipeRequired?.estimatedLength} m
+                                                    </Typography>
+                                                </Grid>
+                                                <Grid size={6}>
+                                                    <Typography variant="caption" color="text.secondary" display="block">
+                                                        EST. COST
+                                                    </Typography>
+                                                    <Typography variant="body2" fontWeight={700} color="primary.main">
+                                                        {conn.newPipeRequired?.estimatedCost?.formatted}
+                                                    </Typography>
+                                                </Grid>
+                                            </Grid>
+
+                                            <Box sx={{ mt: 1.5, pt: 1, borderTop: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <Button
+                                                    size="small"
+                                                    color="error"
+                                                    variant="text"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onDeleteConnection?.(idx);
+                                                    }}
+                                                    sx={{ fontSize: '10px', p: 0 }}
+                                                >
+                                                    Remove Plan
+                                                </Button>
+                                                <Typography variant="caption" fontWeight={600} color="success.dark">
+                                                    Optimized ✓
+                                                </Typography>
+                                            </Box>
+                                        </Box>
+                                    </Popup>
+                                </Marker>
+                            </>
+                        )}
+                    </React.Fragment>
+                ))}
 
                 {/* New Connection Target Marker */}
                 {newConnectionTarget && (
                     <Marker
                         position={newConnectionTarget}
-                        icon={createCustomIcon('#22c55e', 'critical')}
+                        icon={createCustomIcon('#3b82f6', 'target')}
                     >
                         <Popup>
-                            <Typography variant="subtitle2" fontWeight={700}>
-                                📍 New Connection Target
-                            </Typography>
+                            <Box sx={{ p: 0.5, textAlign: 'center' }}>
+                                <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                                    📍 Targeted Location
+                                </Typography>
+                                <Typography variant="caption" display="block" color="text.secondary" sx={{ mb: 1.5 }}>
+                                    Optimal route calculation pending...
+                                </Typography>
+                                <Button
+                                    size="small"
+                                    variant="contained"
+                                    fullWidth
+                                    onClick={() => onMapClick?.({ lat: newConnectionTarget[0], lng: newConnectionTarget[1] })}
+                                >
+                                    Open Planner
+                                </Button>
+                            </Box>
                         </Popup>
                     </Marker>
                 )}
@@ -982,7 +1059,7 @@ const ClusterDetailPanel = ({ cluster, onClose, onSelectComplaint, onResolve }) 
 // NEW CONNECTION PLANNER
 // ============================================================================
 
-const NewConnectionPlanner = ({ isOpen, onClose, onPlanRoute, targetCoords, onPickLocation }) => {
+const NewConnectionPlanner = ({ isOpen, onClose, onPlanRoute, targetCoords, onPickLocation, existingConnections = [], onDeleteConnection }) => {
     const theme = useTheme();
     const [routeResult, setRouteResult] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -1155,10 +1232,60 @@ const NewConnectionPlanner = ({ isOpen, onClose, onPlanRoute, targetCoords, onPi
                         )}
                     </Box>
                 )}
+
+                {/* Existing Planned Connections List */}
+                {existingConnections.length > 0 && (
+                    <Box sx={{ mt: 3, pt: 2, borderTop: `1px solid ${theme.palette.divider}` }}>
+                        <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>
+                            📋 Planned Connections ({existingConnections.length})
+                        </Typography>
+                        <Stack spacing={1}>
+                            {existingConnections.map((conn, idx) => (
+                                <Paper
+                                    key={idx}
+                                    sx={{
+                                        p: 1.5,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        bgcolor: 'success.50',
+                                        border: '1px solid',
+                                        borderColor: 'success.200'
+                                    }}
+                                >
+                                    <Box>
+                                        <Typography variant="body2" fontWeight={600}>
+                                            Connection #{idx + 1}: {conn.connectionPoint?.name}
+                                        </Typography>
+                                        <Typography variant="caption" color="text.secondary">
+                                            {conn.newPipeRequired?.estimatedLength}m • {conn.newPipeRequired?.estimatedCost?.formatted}
+                                        </Typography>
+                                    </Box>
+                                    <IconButton
+                                        size="small"
+                                        onClick={() => onDeleteConnection?.(idx)}
+                                        sx={{ color: 'error.main' }}
+                                    >
+                                        <X size={18} />
+                                    </IconButton>
+                                </Paper>
+                            ))}
+                        </Stack>
+                    </Box>
+                )}
             </DialogContent>
             <DialogActions>
-                <Button onClick={onClose}>Cancel</Button>
+                <Button onClick={onClose}>Close</Button>
                 {routeResult?.success && (
+                    <Button
+                        variant="outlined"
+                        onClick={onPickLocation}
+                        startIcon={<Plus size={16} />}
+                    >
+                        Add Another
+                    </Button>
+                )}
+                {(routeResult?.success || existingConnections.length > 0) && (
                     <Button variant="contained" onClick={onClose}>
                         Show on Map
                     </Button>
@@ -1248,7 +1375,7 @@ const WaterIntelligenceDashboard = () => {
     const [activeTab, setActiveTab] = useState(0);
     const [showPipelines, setShowPipelines] = useState(true);
     const [connectionPlannerOpen, setConnectionPlannerOpen] = useState(false);
-    const [highlightedPath, setHighlightedPath] = useState(null);
+    const [plannedConnections, setPlannedConnections] = useState([]); // Array of planned routes
     const [resolveDialog, setResolveDialog] = useState({ open: false, target: null, type: 'cluster' }); // type: 'issue' or 'cluster'
 
     // Layer visibility controls
@@ -1335,9 +1462,16 @@ const WaterIntelligenceDashboard = () => {
 
     // Handle connection route planning
     const handlePlanRoute = (result) => {
-        if (result?.success) {
-            setHighlightedPath(result);
+        if (result?.success && newConnectionTarget) {
+            // Add to planned connections list with the target coordinates
+            setPlannedConnections(prev => [...prev, { ...result, targetCoords: newConnectionTarget }]);
+            setNewConnectionTarget(null); // Clear current target for next pick
         }
+    };
+
+    // Delete a planned connection by index
+    const handleDeleteConnection = (index) => {
+        setPlannedConnections(prev => prev.filter((_, i) => i !== index));
     };
 
 
@@ -1477,7 +1611,7 @@ const WaterIntelligenceDashboard = () => {
 
                 {/* Stats Row */}
                 <Grid container spacing={2} sx={{ mb: 3 }}>
-                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                    <Grid size={{ xs: 12, sm: 6, md: 3 }} sx={{ animation: 'fadeIn 0.5s ease-out 0.1s both' }}>
                         <StatCard
                             title="Active Issues"
                             value={stats.total}
@@ -1485,7 +1619,7 @@ const WaterIntelligenceDashboard = () => {
                             color="#3b82f6"
                         />
                     </Grid>
-                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                    <Grid size={{ xs: 12, sm: 6, md: 3 }} sx={{ animation: 'fadeIn 0.5s ease-out 0.2s both' }}>
                         <StatCard
                             title="Critical"
                             value={stats.critical}
@@ -1494,7 +1628,7 @@ const WaterIntelligenceDashboard = () => {
                             onClick={() => setActiveTab(0)}
                         />
                     </Grid>
-                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                    <Grid size={{ xs: 12, sm: 6, md: 3 }} sx={{ animation: 'fadeIn 0.5s ease-out 0.3s both' }}>
                         <StatCard
                             title="Correlated Clusters"
                             value={stats.correlatedClusters}
@@ -1503,7 +1637,7 @@ const WaterIntelligenceDashboard = () => {
                             onClick={() => setActiveTab(2)}
                         />
                     </Grid>
-                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                    <Grid size={{ xs: 12, sm: 6, md: 3 }} sx={{ animation: 'fadeIn 0.5s ease-out 0.4s both' }}>
                         <StatCard
                             title="Resolved Today"
                             value={stats.resolved}
@@ -1521,10 +1655,7 @@ const WaterIntelligenceDashboard = () => {
                             mb: 3,
                             border: '2px solid #dc2626',
                             animation: 'pulse 2s infinite',
-                            '@keyframes pulse': {
-                                '0%, 100%': { opacity: 1 },
-                                '50%': { opacity: 0.8 },
-                            },
+                            animationFillMode: 'both'
                         }}
                     >
                         <AlertTitle sx={{ fontWeight: 700 }}>
@@ -1647,10 +1778,10 @@ const WaterIntelligenceDashboard = () => {
                             <PipelineMap
                                 complaints={prioritized.all}
                                 clusters={clusters}
-                                selectedComplaint={selectedComplaint}
+                                selectionComplaint={selectedComplaint}
                                 onComplaintSelect={handleComplaintSelect}
                                 showPipelines={showPipelines}
-                                highlightedPath={highlightedPath}
+                                plannedConnections={plannedConnections}
                                 pipelineData={pipelineData}
                                 layerVisibility={layerVisibility}
                                 isPickingLocation={isPickingLocation}
@@ -1658,6 +1789,7 @@ const WaterIntelligenceDashboard = () => {
                                 newConnectionTarget={newConnectionTarget}
                                 // Add handler for cluster selection
                                 onClusterSelect={handleClusterSelect}
+                                onDeleteConnection={handleDeleteConnection}
                             />
                         </Paper>
                     </Grid>
@@ -1865,6 +1997,8 @@ const WaterIntelligenceDashboard = () => {
                 onPlanRoute={handlePlanRoute}
                 targetCoords={newConnectionTarget}
                 onPickLocation={handlePickLocation}
+                existingConnections={plannedConnections}
+                onDeleteConnection={handleDeleteConnection}
             />
 
             {/* CSS for custom animations */}
@@ -1877,6 +2011,17 @@ const WaterIntelligenceDashboard = () => {
                 @keyframes scan {
                     0% { top: 0; }
                     100% { top: 100%; }
+                }
+
+                @keyframes pulse {
+                    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); }
+                    70% { transform: scale(1.01); box-shadow: 0 0 0 10px rgba(220, 38, 38, 0); }
+                    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+                }
+
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: translateY(20px); }
+                    to { opacity: 1; transform: translateY(0); }
                 }
             `}</style>
         </Box>

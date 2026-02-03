@@ -23,7 +23,7 @@ const FAQSection = () => {
         {
             id: 'panel1',
             question: 'What is UIIS and how does it work?',
-            answer: 'UIIS (Urban Water Intelligence System) is a community-driven platform for reporting and tracking water-related issues like shortages, contamination, leaks, and drainage problems. Citizens submit complaints with location and photos, which are then processed by our AI system to prioritize issues and route them to the appropriate water officers for resolution.'
+            answer: '<span className="notranslate">UIIS (Urban Issue Intelligence System)</span> is a community-driven platform for reporting and tracking urban issues, currently focused on water management like shortages, contamination, leaks, and drainage problems. Citizens submit complaints with location and photos, which are then processed by our AI system to prioritize issues and route them to the appropriate water officers for resolution.'
         },
         {
             id: 'panel2',
@@ -98,7 +98,7 @@ const FAQSection = () => {
                             Frequently Asked Questions
                         </Typography>
                         <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 600, mx: 'auto' }}>
-                            Everything you need to know about UIIS — Urban Water Intelligence System.
+                            Everything you need to know about <span className="notranslate">UIIS — Urban Issue Intelligence System</span>.
                         </Typography>
                     </Box>
                 </motion.div>

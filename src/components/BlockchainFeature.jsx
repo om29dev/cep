@@ -33,8 +33,8 @@ const BlockchainFeature = () => {
             <Container maxWidth="lg">
                 <Grid container spacing={8} alignItems="center">
                     <Grid size={{ xs: 12, md: 6 }}>
-                        <Typography variant="overline" color="primary" sx={{ fontWeight: 800, letterSpacing: 2 }}>
-                            TRANSPARENCY LAYER
+                        <Typography variant="h6" color="primary" className="notranslate" sx={{ fontWeight: 800, letterSpacing: 2, fontSize: '1.5rem' }}>
+                            TRANSPARENCY LAYER • UIIS
                         </Typography>
                         <Typography
                             variant="h2"

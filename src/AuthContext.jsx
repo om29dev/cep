@@ -5,7 +5,8 @@ const AuthContext = createContext();
 
 // Configure axios for credentials
 axios.defaults.withCredentials = true;
-axios.defaults.baseURL = 'http://localhost:5000';
+// Configure axios for credentials
+axios.defaults.withCredentials = true;
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);

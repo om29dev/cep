@@ -11,8 +11,7 @@ const steps = [
     },
     {
         label: 'Data Analysis System',
-        description: `Our system normalizes and clusters similar water complaints to detect 
-    recurring problem areas and infrastructure failure hotspots.`,
+        description: `Our system normalized and clusters similar water complaints. Every record is cryptographically secured on our blockchain ledger to ensure data integrity and prevent manipulation.`,
         icon: <Database size={24} />
     },
     {
@@ -42,11 +41,33 @@ const HowItWorks = () => {
                     gutterBottom
                     sx={{
                         fontWeight: 800,
-                        mb: 6,
+                        mb: 1,
                         fontSize: { xs: '2rem', md: '3.75rem' }
                     }}
                 >
-                    The UIIS Solution
+                    The <span className="notranslate">UIIS</span> Solution
+                </Typography>
+                <Typography
+                    variant="h5"
+                    align="center"
+                    color="primary"
+                    className="notranslate"
+                    sx={{
+                        fontWeight: 600,
+                        mb: 1,
+                        opacity: 0.9,
+                        letterSpacing: 1
+                    }}
+                >
+                    (Urban Issue Intelligence System)
+                </Typography>
+                <Typography
+                    variant="body1"
+                    align="center"
+                    color="text.secondary"
+                    sx={{ mb: 6 }}
+                >
+                    Currently Focused on Water Management
                 </Typography>
 
                 <Stepper activeStep={activeStep} orientation="vertical">

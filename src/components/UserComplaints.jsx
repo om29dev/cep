@@ -18,7 +18,7 @@ import {
     ImageList,
     ImageListItem
 } from '@mui/material';
-import { CheckCircle, Clock, MapPin, AlertCircle } from 'lucide-react';
+import { CheckCircle, Clock, MapPin, AlertCircle, Phone, Mail } from 'lucide-react';
 
 const UserComplaints = () => {
     const theme = useTheme();
@@ -156,6 +156,52 @@ const UserComplaints = () => {
                                 </Box>
                             </DialogTitle>
                             <DialogContent sx={{ py: 2 }}>
+                                {/* ASSIGNED OFFICER / DEPARTMENT CONTACT SECTION */}
+                                <Box sx={{ mb: 3 }}>
+                                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1.5, fontWeight: 700 }}>
+                                        ASSIGNED OFFICER / CONTACT
+                                    </Typography>
+                                    <Paper
+                                        elevation={0}
+                                        sx={{
+                                            p: 2,
+                                            borderRadius: 3,
+                                            background: theme.palette.mode === 'dark' ? 'rgba(0, 210, 255, 0.05)' : 'rgba(0, 210, 255, 0.02)',
+                                            border: `1px solid ${theme.palette.divider}`
+                                        }}
+                                    >
+                                        <Box display="flex" flexDirection="column" gap={1.5}>
+                                            <Box display="flex" alignItems="center" gap={1.5}>
+                                                <Typography variant="body1" fontWeight={800} color="primary">
+                                                    PCMC Water Department (Sarathi)
+                                                </Typography>
+                                                {!selectedComplaint.officer_id && (
+                                                    <Chip label="DEPT FALLBACK" size="small" sx={{ fontWeight: 800, fontSize: '0.65rem', height: 20, bgcolor: 'rgba(0, 210, 255, 0.1)', color: '#00D2FF' }} />
+                                                )}
+                                            </Box>
+
+                                            <Grid container spacing={2}>
+                                                <Grid item xs={12} sm={6}>
+                                                    <Box display="flex" alignItems="center" gap={1}>
+                                                        <Phone size={16} color={theme.palette.text.secondary} />
+                                                        <Typography variant="body2" fontWeight={600}>8888006666</Typography>
+                                                    </Box>
+                                                </Grid>
+                                                <Grid item xs={12} sm={6}>
+                                                    <Box display="flex" alignItems="center" gap={1}>
+                                                        <Mail size={16} color={theme.palette.text.secondary} />
+                                                        <Typography variant="body2" fontWeight={600}>sarathi@pcmcindia.gov.in</Typography>
+                                                    </Box>
+                                                </Grid>
+                                            </Grid>
+
+                                            <Typography variant="caption" color="text.secondary" fontStyle="italic">
+                                                * This issue is tracked in the registry and monitored by the central department.
+                                            </Typography>
+                                        </Box>
+                                    </Paper>
+                                </Box>
+
                                 <Typography variant="subtitle2" color="text.secondary" gutterBottom>DESCRIPTION</Typography>
                                 <Paper variant="outlined" sx={{ p: 2, mb: 3, borderRadius: 2, bgcolor: theme.palette.action.hover, border: 'none' }}>
                                     <Typography variant="body1">{selectedComplaint.description}</Typography>

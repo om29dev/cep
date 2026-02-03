@@ -9,6 +9,7 @@ const Register = () => {
         username: '',
         fullName: '', // Added Full Name
         email: '',
+        phone: '', // Added Phone Number
         password: '',
         role: 'citizen'
     });
@@ -35,7 +36,7 @@ const Register = () => {
             await axios.post('http://localhost:5000/api/auth/send-otp', { email: formData.email });
             setOtpSent(true);
             setOtpError('');
-            alert('OTP sent to your email!');
+            // alert('OTP sent to your email!');
         } catch (err) {
             setOtpError(err.response?.data?.error || 'Failed to send OTP');
         }
@@ -67,6 +68,7 @@ const Register = () => {
                 username: formData.username,
                 fullName: formData.fullName, // Passing Full Name
                 email: formData.email,
+                phone: formData.phone, // Passing Phone Number
                 password: formData.password,
                 role: formData.role
             });
@@ -109,6 +111,16 @@ const Register = () => {
                             value={formData.username}
                             onChange={handleChange}
                         />
+                        <TextField
+                            margin="normal"
+                            required
+                            fullWidth
+                            label="Phone Number"
+                            name="phone"
+                            value={formData.phone}
+                            onChange={handleChange}
+                            placeholder="e.g. +91 9876543210"
+                        />
                         {/* Email Field follows... */}
                         <TextField
                             margin="normal"
@@ -137,6 +149,11 @@ const Register = () => {
                                 ),
                             }}
                         />
+                        {otpSent && !otpVerified && (
+                            <Typography variant="body2" color="success.main" sx={{ mb: 1, textAlign: 'left', width: '100%' }}>
+                                OTP sent to your email!
+                            </Typography>
+                        )}
                         {otpSent && !otpVerified && (
                             <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
                                 <TextField

@@ -76,13 +76,13 @@ const CTASection = () => {
                             sx={{
                                 color: 'text.secondary',
                                 mb: 5,
-                                maxWidth: '700px',
+                                maxWidth: '750px',
                                 mx: 'auto',
                                 fontWeight: 400,
                                 lineHeight: 1.6
                             }}
                         >
-                            Join thousands of citizens who are transforming urban water management.
+                            Join thousands using <span className="notranslate">UIIS (Urban Issue Intelligence System)</span> to transform water management.
                             Your voice matters. Report an issue today and be part of the solution.
                         </Typography>
 

@@ -43,7 +43,7 @@ const StatsSection = () => {
             value: stats.totalComplaints || '1,247',
             label: 'Water Issues Reported',
             color: '#00D2FF',
-            description: 'Total complaints tracked by UIIS'
+            description: 'Total complaints tracked by <span className="notranslate">UIIS</span>'
         },
         {
             icon: <CheckCircle2 size={32} />,

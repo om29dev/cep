@@ -93,7 +93,7 @@ const UserRolesSection = () => {
                     align="center"
                     sx={{ color: 'text.secondary', mb: 8, maxWidth: '800px', mx: 'auto' }}
                 >
-                    Whether you're a citizen reporting issues, an officer resolving them, or an administrator overseeing the system — UIIS (Urban Water Intelligence System) has tailored features for you.
+                    Whether you're a citizen reporting issues, an officer resolving them, or an administrator overseeing the system — <span className="notranslate">UIIS (Urban Water Intelligence System)</span> has tailored features for you.
                 </Typography>
 
                 <Grid container spacing={4}>

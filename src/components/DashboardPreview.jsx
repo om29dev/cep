@@ -44,7 +44,8 @@ import {
     CheckCircle2,
     Clock,
     AlertTriangle,
-    Map as MapIcon
+    Map as MapIcon,
+    MapPin
 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -166,6 +167,8 @@ const StatCard = ({ title, value, icon: Icon, color, trend, compact }) => {
 };
 
 
+import IssueDetailDialog from './shared/IssueDetailDialog';
+
 const DashboardPreview = () => {
     const theme = useTheme();
     const navigate = useNavigate();
@@ -188,7 +191,10 @@ const DashboardPreview = () => {
         }
     };
 
-
+    const handleUpdate = (updatedComplaint) => {
+        setComplaints(prev => prev.map(c => c.id === updatedComplaint.id ? updatedComplaint : c));
+        setSelectedComplaint(updatedComplaint);
+    };
 
     const refreshData = async () => {
         setLoading(true);
@@ -213,6 +219,7 @@ const DashboardPreview = () => {
             alert("Failed to update status.");
         }
     };
+
 
     const getPosition = (locString) => {
         if (!locString) return null;
@@ -554,9 +561,7 @@ const DashboardPreview = () => {
                                         />
                                     ))}
 
-                                    {/* Render Individual Markers */}
                                     {activeComplaints.map((complaint) => {
-
                                         const pos = getPosition(complaint.location);
                                         if (!pos) return null;
                                         return (
@@ -568,7 +573,7 @@ const DashboardPreview = () => {
                                                 }}
                                             >
                                                 <Popup>
-                                                    <Box sx={{ p: 1, cursor: 'pointer' }} onClick={() => setSelectedComplaint(complaint)}>
+                                                    <Box sx={{ p: 1, cursor: 'pointer', minWidth: 200 }} onClick={() => setSelectedComplaint(complaint)}>
                                                         <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
                                                             <Chip
                                                                 label={complaint.category.toUpperCase()}
@@ -582,13 +587,7 @@ const DashboardPreview = () => {
                                                                 </Typography>
                                                             )}
                                                         </Box>
-                                                        <Typography variant="subtitle2" fontWeight={600} sx={{ textTransform: 'capitalize' }}>
-                                                            {complaint.area || "Unknown Area"}
-                                                        </Typography>
-                                                        <Typography variant="caption" display="block" color="text.secondary" gutterBottom>
-                                                            Ward: {complaint.ward || "General"}
-                                                        </Typography>
-                                                        <Typography variant="body2" sx={{ mt: 1, mb: 1, color: 'text.secondary', fontSize: '0.75rem' }}>
+                                                        <Typography variant="body2" sx={{ my: 1, fontWeight: 500 }}>
                                                             {complaint.description.substring(0, 80)}...
                                                         </Typography>
                                                         <Typography variant="caption" display="block" sx={{ mb: 1, opacity: 0.8 }}>
@@ -606,6 +605,8 @@ const DashboardPreview = () => {
                             </Box>
                         </Paper>
                     </Grid>
+
+
 
                     {/* RIGHT COLUMN - COMMAND FEED */}
                     <Grid size={{ xs: 12, lg: 4 }}>
@@ -628,80 +629,111 @@ const DashboardPreview = () => {
                                     display: 'flex',
                                     justifyContent: 'space-between',
                                     alignItems: 'center',
-                                    bgcolor: theme.palette.action.hover
+                                    bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : theme.palette.action.hover
                                 }}>
-                                    <Typography variant="subtitle2" fontWeight={800} sx={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                        Incoming Feed
-                                    </Typography>
+                                    <Box display="flex" alignItems="center" gap={1}>
+                                        <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#f43f5e', boxShadow: '0 0 10px #f43f5e' }}></div>
+                                        <Typography variant="subtitle2" fontWeight={800} sx={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                            Live Incident Feed
+                                        </Typography>
+                                    </Box>
                                     <Badge badgeContent={activeComplaints.length} color="error" variant="dot">
                                         <Typography variant="caption" sx={{ opacity: 0.7, fontWeight: 600 }}>LIVE</Typography>
                                     </Badge>
                                 </Box>
 
-                                <Box sx={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', flex: 1 }}>
-                                    {activeComplaints.map((complaint, index) => (
-                                        <Box key={complaint.id}
-                                            onClick={() => setSelectedComplaint(complaint)}
-                                            sx={{
-                                                p: 2,
-                                                borderBottom: `1px solid ${theme.palette.divider}`,
-                                                cursor: 'pointer',
-                                                display: 'flex',
-                                                gap: 2,
-                                                transition: 'background-color 0.2s',
-                                                '&:hover': {
-                                                    bgcolor: theme.palette.action.hover
-                                                }
-                                            }}
-                                        >
-                                            <Box sx={{ pt: 0.5 }}>
-                                                <div style={{
-                                                    width: 8,
-                                                    height: 8,
-                                                    borderRadius: '50%', // Keep status dot circular unless specifically asked to be square
-                                                    backgroundColor: complaint.ai_urgency === 'Emergency' ? '#ef4444' : (complaint.ai_urgency === 'High' ? '#f59e0b' : '#3b82f6'),
-                                                    boxShadow: `0 0 8px ${complaint.ai_urgency === 'Emergency' ? '#ef4444' : (complaint.ai_urgency === 'High' ? '#f59e0b' : '#3b82f6')}`
-                                                }} />
+                                <Box sx={{
+                                    flexGrow: 1,
+                                    overflowY: 'auto',
+                                    p: 1.5,
+                                    bgcolor: theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.1)' : 'transparent',
+                                    '&::-webkit-scrollbar': { width: '4px' },
+                                    '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: '4px' }
+                                }}>
+                                    <Stack spacing={2}>
+                                        {activeComplaints.length === 0 ? (
+                                            <Box sx={{ textAlign: 'center', py: 4, opacity: 0.5 }}>
+                                                <Typography variant="body2">No active issues reported.</Typography>
                                             </Box>
-                                            <Box sx={{ flex: 1 }}>
-                                                <Box display="flex" justifyContent="space-between" mb={0.5}>
-                                                    <Typography variant="caption" fontWeight={700} color="text.secondary" fontFamily="monospace">
-                                                        #{complaint.id} • {complaint.category?.toUpperCase() || 'GENERAL'}
-                                                    </Typography>
-                                                    <Box display="flex" gap={1} alignItems="center">
-                                                        {complaint.ai_urgency && (
-                                                            <Chip
-                                                                label={complaint.ai_urgency}
-                                                                size="small"
-                                                                variant="outlined"
-                                                                sx={{
-                                                                    height: 16,
-                                                                    fontSize: '8px',
-                                                                    fontWeight: 800,
-                                                                    borderColor: complaint.ai_urgency === 'Emergency' ? '#ef4444' : 'divider',
-                                                                    color: complaint.ai_urgency === 'Emergency' ? '#ef4444' : 'text.secondary',
-                                                                    borderRadius: 0
-                                                                }}
-                                                            />
-                                                        )}
-                                                        <Typography variant="caption" color="text.secondary">
+                                        ) : (
+                                            activeComplaints.map((complaint, index) => (
+                                                <Paper
+                                                    key={complaint.id}
+                                                    elevation={0}
+                                                    onClick={() => setSelectedComplaint(complaint)}
+                                                    sx={{
+                                                        p: 2,
+                                                        cursor: 'pointer',
+                                                        borderRadius: 2,
+                                                        bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : '#fff',
+                                                        border: `1px solid ${theme.palette.divider}`,
+                                                        transition: 'all 0.2s ease-in-out',
+                                                        position: 'relative',
+                                                        overflow: 'hidden',
+                                                        '&:hover': {
+                                                            bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.01)',
+                                                            transform: 'translateY(-2px)',
+                                                            borderColor: theme.palette.primary.main,
+                                                            boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                                                        },
+                                                        '&::before': {
+                                                            content: '""',
+                                                            position: 'absolute',
+                                                            left: 0,
+                                                            top: 0,
+                                                            bottom: 0,
+                                                            width: 3,
+                                                            bgcolor: complaint.category === 'leakage' ? '#f43f5e' : '#3b82f6',
+                                                            boxShadow: `0 0 10px ${complaint.category === 'leakage' ? '#f43f5e' : '#3b82f6'}`
+                                                        }
+                                                    }}
+                                                >
+                                                    <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={1}>
+                                                        <Box display="flex" gap={1} alignItems="center">
+                                                            <Typography variant="caption" sx={{
+                                                                fontWeight: 900,
+                                                                color: 'primary.main',
+                                                                bgcolor: 'rgba(59, 130, 246, 0.1)',
+                                                                px: 1,
+                                                                py: 0.2,
+                                                                borderRadius: 1,
+                                                                fontSize: '0.6rem'
+                                                            }}>
+                                                                #{complaint.id}
+                                                            </Typography>
+                                                            <Typography variant="caption" fontWeight={800} color="text.primary">
+                                                                {complaint.category.toUpperCase()}
+                                                            </Typography>
+                                                        </Box>
+                                                        <Typography variant="caption" sx={{ opacity: 0.6, fontSize: '0.65rem', fontFamily: 'monospace' }}>
                                                             {new Date(complaint.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                         </Typography>
                                                     </Box>
-                                                </Box>
-                                                <Typography variant="body2" fontWeight={600} sx={{ mb: 0.5, color: 'text.primary', fontSize: '0.85rem' }}>
-                                                    {complaint.description.substring(0, 100)}...
-                                                </Typography>
-                                                <Box display="flex" alignItems="center" gap={0.5}>
-                                                    <MapIcon size={12} style={{ opacity: 0.5 }} />
-                                                    <Typography variant="caption" fontWeight={600} sx={{ textTransform: 'capitalize' }}>
-                                                        {complaint.area || 'Unknown'} {complaint.ward ? `(${complaint.ward})` : ''}
+                                                    <Typography variant="body2" sx={{
+                                                        fontWeight: 500,
+                                                        color: 'text.secondary',
+                                                        mb: 1.5,
+                                                        display: '-webkit-box',
+                                                        WebkitLineClamp: 2,
+                                                        WebkitBoxOrient: 'vertical',
+                                                        overflow: 'hidden',
+                                                        lineHeight: 1.4,
+                                                        fontSize: '0.8rem'
+                                                    }}>
+                                                        {complaint.description}
                                                     </Typography>
-                                                </Box>
-                                            </Box>
-                                        </Box>
-                                    ))}
+                                                    <Box display="flex" alignItems="center" gap={1}>
+                                                        <MapPin size={10} color={theme.palette.primary.main} />
+                                                        <Typography variant="caption" sx={{ fontWeight: 700, opacity: 0.8, color: 'text.primary' }}>
+                                                            {complaint.area || 'GENERAL'} {complaint.ward ? `(W${complaint.ward})` : ''}
+                                                        </Typography>
+                                                    </Box>
+                                                </Paper>
+                                            ))
+                                        )}
+                                    </Stack>
                                 </Box>
+
                             </Paper>
 
                             <Stack spacing={2}>
@@ -944,99 +976,13 @@ const DashboardPreview = () => {
                     </Grid>
                 </Grid>
 
-                {/* DETAIL DIALOG */}
-                <Dialog
+                <IssueDetailDialog
                     open={!!selectedComplaint}
+                    complaint={selectedComplaint}
                     onClose={() => setSelectedComplaint(null)}
-                    maxWidth="sm"
-                    fullWidth
-                    PaperProps={{ sx: { borderRadius: 0 } }}
-                >
-                    {selectedComplaint && (
-                        <>
-                            <DialogTitle sx={{ pb: 1, pt: 3, px: 3 }}>
-                                <Box display="flex" justifyContent="space-between" alignItems="center">
-                                    <Box>
-                                        <Typography variant="caption" color="text.secondary">ISSUE ID: #{selectedComplaint.id}</Typography>
-                                        <Typography variant="h6" fontWeight={800}>{selectedComplaint.category.toUpperCase()} ALERT</Typography>
-                                    </Box>
+                    onUpdate={handleUpdate}
+                />
 
-                                </Box>
-                            </DialogTitle>
-                            <DialogContent sx={{ px: 3, pt: 2 }}>
-                                <Stack spacing={3}>
-                                    <Paper elevation={0} sx={{ p: 2, bgcolor: theme.palette.action.hover, borderRadius: 0 }}>
-                                        <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                                            {selectedComplaint.description}
-                                        </Typography>
-                                    </Paper>
-
-                                    <Box display="flex" gap={2}>
-                                        <Box flex={1}>
-                                            <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ mb: 1, display: 'block' }}>JURISDICTION</Typography>
-                                            <Stack direction="row" spacing={1} flexWrap="wrap">
-                                                <Chip
-                                                    label={`Area: ${selectedComplaint.area || "Unknown Area"}`}
-                                                    variant="outlined"
-                                                    sx={{
-                                                        borderColor: '#3b82f6',
-                                                        color: '#93c5fd',
-                                                        bgcolor: 'rgba(59, 130, 246, 0.1)',
-                                                        fontWeight: 600
-                                                    }}
-                                                />
-                                            </Stack>
-                                        </Box>
-                                        <Divider orientation="vertical" flexItem />
-                                        <Box flex={1}>
-                                            <Typography variant="caption" color="text.secondary" fontWeight={700}>PRECISE LOCATION</Typography>
-                                            <Typography variant="body2" fontWeight={700} sx={{ textTransform: 'capitalize' }}>
-                                                {selectedComplaint.ward ? `Ward: ${selectedComplaint.ward}` : "Ward Unidentified"}
-                                            </Typography>
-                                            <Button
-                                                variant="text"
-                                                size="small"
-                                                startIcon={<MapIcon size={14} />}
-                                                href={`https://www.google.com/maps?q=${selectedComplaint.location}`}
-                                                target="_blank"
-                                                sx={{ mt: 0.5, p: 0, minWidth: 'auto', textTransform: 'none' }}
-                                            >
-                                                Open in Geo-Sat
-                                            </Button>
-                                        </Box>
-                                    </Box>
-
-                                    {parseImages(selectedComplaint.images).length > 0 && (
-                                        <Box>
-                                            <Typography variant="caption" color="text.secondary" fontWeight={700} gutterBottom display="block">EVIDENCE LOG</Typography>
-                                            <ImageList cols={3} rowHeight={100} gap={8}>
-                                                {parseImages(selectedComplaint.images).map((img, index) => {
-                                                    const filename = img.split(/[/\\]/).pop();
-                                                    const imageUrl = `http://localhost:5000/uploads/${filename}`;
-                                                    return (
-                                                        <ImageListItem key={index}>
-                                                            <img
-                                                                src={imageUrl}
-                                                                srcSet={imageUrl}
-                                                                alt={`Evidence ${index + 1}`}
-                                                                loading="lazy"
-                                                                style={{ borderRadius: 8, height: '100%', objectFit: 'cover' }}
-                                                                onClick={() => window.open(imageUrl, '_blank')}
-                                                            />
-                                                        </ImageListItem>
-                                                    );
-                                                })}
-                                            </ImageList>
-                                        </Box>
-                                    )}
-                                </Stack>
-                            </DialogContent>
-                            <DialogActions sx={{ p: 3 }}>
-                                <Button onClick={() => setSelectedComplaint(null)} color="inherit" sx={{ borderRadius: 2 }}>Dismiss</Button>
-                            </DialogActions>
-                        </>
-                    )}
-                </Dialog>
 
                 {/* REGION MAP MODAL */}
                 <Dialog
@@ -1102,10 +1048,17 @@ const DashboardPreview = () => {
                                     const pos = getPosition(complaint.location);
                                     if (!pos) return null;
                                     return (
-                                        <Marker key={complaint.id} position={pos}>
+                                        <Marker
+                                            key={complaint.id}
+                                            position={pos}
+                                            eventHandlers={{
+                                                click: () => setSelectedComplaint(complaint)
+                                            }}
+                                        >
                                             <Popup>
-                                                <Typography variant="subtitle2">{complaint.category}</Typography>
-                                                <Typography variant="caption">{complaint.description}</Typography>
+                                                <Typography variant="subtitle2" fontWeight={800} color="primary">{complaint.category.toUpperCase()}</Typography>
+                                                <Typography variant="caption" display="block">{complaint.description}</Typography>
+                                                <Typography variant="caption" color="primary" sx={{ display: 'block', mt: 1, fontWeight: 700 }}>CLICK FOR DETAILS</Typography>
                                             </Popup>
                                         </Marker>
                                     );
