@@ -181,13 +181,13 @@ const UserComplaints = () => {
                                             </Box>
 
                                             <Grid container spacing={2}>
-                                                <Grid item xs={12} sm={6}>
+                                                <Grid size={{ xs: 12, sm: 6 }}>
                                                     <Box display="flex" alignItems="center" gap={1}>
                                                         <Phone size={16} color={theme.palette.text.secondary} />
                                                         <Typography variant="body2" fontWeight={600}>8888006666</Typography>
                                                     </Box>
                                                 </Grid>
-                                                <Grid item xs={12} sm={6}>
+                                                <Grid size={{ xs: 12, sm: 6 }}>
                                                     <Box display="flex" alignItems="center" gap={1}>
                                                         <Mail size={16} color={theme.palette.text.secondary} />
                                                         <Typography variant="body2" fontWeight={600}>sarathi@pcmcindia.gov.in</Typography>

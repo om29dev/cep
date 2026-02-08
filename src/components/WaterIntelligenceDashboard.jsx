@@ -222,17 +222,28 @@ const MapController = ({ center, zoom }) => {
 };
 
 // Map click handler
-const MapClickHandler = ({ onMapClick, isPicking }) => {
-    useMapEvents({
+// Map click handler & Viewport Tracker
+const MapEventsHandler = ({ onMapClick, isPicking, setZoom, onBoundsChange }) => {
+    const map = useMapEvents({
         click(e) {
             if (isPicking && onMapClick) {
                 onMapClick(e.latlng);
             }
         },
+        zoomend() {
+            setZoom(map.getZoom());
+            onBoundsChange(map.getBounds());
+        },
+        moveend() {
+            onBoundsChange(map.getBounds());
+        }
     });
 
-    // Change cursor when picking
-    const map = useMap();
+    useEffect(() => {
+        // Initial bounds
+        onBoundsChange(map.getBounds());
+    }, [map, onBoundsChange]);
+
     useEffect(() => {
         if (isPicking) {
             map.getContainer().style.cursor = 'crosshair';
@@ -252,11 +263,13 @@ const PipelineMap = ({
     complaints,
     clusters,
     selectedComplaint,
+    selectedCluster,
     onComplaintSelect,
     showPipelines = true,
     plannedConnections = [], // Changed from highlightedPath
     newConnectionTarget = null,
     pipelineData = { nodes: [], edges: [], nodeTypes: {} },
+    bottlenecks = [], // New prop for Max Flow Bottlenecks
     layerVisibility = {
         pipelines: true,
         reservoirs: true,
@@ -270,9 +283,35 @@ const PipelineMap = ({
     isPickingLocation = false,
     onMapClick = null,
     onClusterSelect = null,
-    onDeleteConnection = null
+    onDeleteConnection = null,
+    pickingMode = null,
+    onNodePick = null,
 }) => {
     const theme = useTheme();
+    const [zoom, setZoom] = useState(12);
+    const [visibleNodes, setVisibleNodes] = useState([]);
+
+    // throttle bounds updates
+    const handleBoundsChange = useCallback((bounds) => {
+        if (!pipelineData.nodes) return;
+
+        // Filter: Keep ALL major infrastructure (WTP, ESR, Pump). 
+        // Only filter 'junction' and 'valve' based on viewport AND zoom level to improve performance/clutter.
+        const visible = pipelineData.nodes.filter(node => {
+            // Always show critical infrastructure regardless of zoom/bounds
+            if (node.type === 'reservoir' || node.type === 'esr' || node.type === 'pump') return true;
+
+            // For junctions/valves, only show if zoomed in enough AND in bounds
+            if (zoom < 15) return false;
+
+            // Check bounds
+            if (!node.coords) return false;
+            return bounds.contains(node.coords);
+        });
+
+        // Slice limit to prevent rendering thousands of markers even if zoomed in
+        setVisibleNodes(visible.slice(0, 500));
+    }, [pipelineData.nodes, zoom]);
 
     const parseCoords = (locString) => {
         if (!locString) return null;
@@ -290,31 +329,67 @@ const PipelineMap = ({
         if (!layerVisibility.pipelines || !pipelineData.edges) return [];
 
         return pipelineData.edges.map(edge => {
-            const fromNode = getNodeById(edge.from);
-            const toNode = getNodeById(edge.to);
-            if (!fromNode || !toNode) return null;
+            // Apply zoom-based filtering for pipelines
+            // Only show major distribution lines at lower zoom levels
+            if (zoom < 14 && edge.diameter < 400) return null;
+
+            let fromCoords = edge.fromCoords;
+            let toCoords = edge.toCoords;
+
+            if (!fromCoords || !toCoords) {
+                const fromNode = getNodeById(edge.from);
+                const toNode = getNodeById(edge.to);
+                if (fromNode) fromCoords = fromNode.coords;
+                if (toNode) toCoords = toNode.coords;
+            }
+
+            if (!fromCoords || !toCoords) return null;
 
             // Check if edge is part of ANY planner connection
             const isHighlighted = plannedConnections.some(conn => conn.edges?.includes(edge.id));
 
-            // Determine color based on diameter and status
-            let color = '#3b82f6'; // Default blue
-            if (edge.diameter >= 600) color = '#1e40af'; // Large pipes - dark blue
-            else if (edge.diameter >= 400) color = '#3b82f6'; // Medium - blue
-            else color = '#60a5fa'; // Small - light blue
+            // Check if edge is a bottleneck
+            // Ensure ID comparison is robust (string vs number)
+            const isBottleneck = bottlenecks.some(b => String(b.id) === String(edge.id));
 
-            if (isHighlighted) color = '#22c55e'; // Highlighted path - green
+            // VISUAL STYLING
+            let color = '#93c5fd'; // Default light blue for minor lines
+            let weight = 2;
+            let opacity = 0.5;
+
+            // Major Pipelines (Main Distribution Lines) >= 600mm
+            if (edge.diameter >= 800) {
+                color = '#1e3a8a'; // Deep Blue
+                weight = 5;
+                opacity = 0.9;
+            } else if (edge.diameter >= 400) {
+                color = '#2563eb'; // Medium Blue
+                weight = 3;
+                opacity = 0.7;
+            }
+
+            if (isHighlighted) {
+                color = '#22c55e'; // Highlighted path - Green
+                weight = 6;
+                opacity = 1;
+            }
+
+            if (isBottleneck) {
+                color = '#ef4444'; // Bottleneck - Red
+                weight = 8;        // Thicker
+                opacity = 1;
+            }
 
             return {
                 id: edge.id,
-                positions: [fromNode.coords, toNode.coords],
+                positions: [fromCoords, toCoords],
                 color,
-                weight: isHighlighted ? 5 : Math.max(2, edge.diameter / 200),
-                opacity: isHighlighted ? 1 : 0.6,
+                weight,
+                opacity,
                 dashArray: edge.status !== 'active' ? '5, 10' : null,
             };
         }).filter(Boolean);
-    }, [layerVisibility.pipelines, plannedConnections, pipelineData]);
+    }, [layerVisibility.pipelines, plannedConnections, pipelineData, zoom]);
 
     // Complaint markers with severity styling
     const complaintMarkers = useMemo(() => {
@@ -345,7 +420,14 @@ const PipelineMap = ({
                 center={PCMC_CENTER}
                 zoom={12}
                 style={{ height: '100%', width: '100%' }}
+                preferCanvas={true}
             >
+                <MapEventsHandler
+                    onMapClick={onMapClick}
+                    isPicking={isPickingLocation}
+                    setZoom={setZoom}
+                    onBoundsChange={handleBoundsChange}
+                />
                 {/* ... (TileLayer, MapController, etc.) */}
                 <TileLayer
                     url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png"
@@ -353,29 +435,41 @@ const PipelineMap = ({
                 />
 
                 <MapController
-                    center={selectedComplaint ? parseCoords(selectedComplaint.location) : PCMC_CENTER}
-                    zoom={selectedComplaint ? 15 : 12}
+                    center={
+                        selectedComplaint ? parseCoords(selectedComplaint.location) :
+                            selectedCluster?.center ? selectedCluster.center :
+                                PCMC_CENTER
+                    }
+                    zoom={selectedComplaint ? 15 : selectedCluster ? 14 : 12}
                 />
 
-                <MapClickHandler onMapClick={onMapClick} isPicking={isPickingLocation} />
+
 
                 {/* Pipeline Lines */}
-                {pipelineLines.map(line => (
-                    // ...
-                    <Polyline
-                        key={line.id}
-                        positions={line.positions}
-                        pathOptions={{
-                            color: line.color,
-                            weight: line.weight,
-                            opacity: line.opacity,
-                            dashArray: line.dashArray,
-                        }}
-                    />
-                ))}
+                {pipelineLines.map(line => {
+                    if (!line.positions || line.positions.length < 2 ||
+                        !line.positions[0] || !line.positions[1] ||
+                        line.positions[0][0] == null || line.positions[0][1] == null ||
+                        line.positions[1][0] == null || line.positions[1][1] == null ||
+                        isNaN(line.positions[0][0]) || isNaN(line.positions[0][1]) ||
+                        isNaN(line.positions[1][0]) || isNaN(line.positions[1][1])) return null;
+
+                    return (
+                        <Polyline
+                            key={line.id}
+                            positions={line.positions}
+                            pathOptions={{
+                                color: line.color,
+                                weight: line.weight,
+                                opacity: line.opacity,
+                                dashArray: line.dashArray,
+                            }}
+                        />
+                    );
+                })}
 
                 {/* Pipeline Infrastructure Nodes - All Types */}
-                {pipelineData.nodes && pipelineData.nodes.map(node => {
+                {visibleNodes.map(node => {
                     // Check visibility based on node type
                     const shouldShow = (
                         (node.type === 'reservoir' && layerVisibility.reservoirs) ||
@@ -428,6 +522,14 @@ const PipelineMap = ({
                             key={node.id}
                             position={node.coords}
                             icon={createInfraIcon(node.type, config.color)}
+                            eventHandlers={{
+                                click: (e) => {
+                                    if (pickingMode) {
+                                        L.DomEvent.stopPropagation(e); // Prevent map click
+                                        onNodePick && onNodePick(node);
+                                    }
+                                }
+                            }}
                         >
                             <Popup>
                                 <Box sx={{ minWidth: 180 }}>
@@ -520,23 +622,36 @@ const PipelineMap = ({
                 ))}
 
                 {/* Proposal: New Connection Lines & Markers (Multiple) */}
-                {plannedConnections.map((conn, idx) => (
-                    <React.Fragment key={`planned-conn-group-${idx}`}>
-                        {conn.connectionPoint && conn.targetCoords && (
-                            <>
-                                <Polyline
-                                    positions={[
-                                        conn.connectionPoint.coords,
-                                        conn.targetCoords
-                                    ]}
-                                    pathOptions={{
-                                        color: '#10b981',
-                                        weight: 5,
-                                        dashArray: '8, 8',
-                                        opacity: 0.9,
-                                        lineCap: 'round'
-                                    }}
-                                />
+                {plannedConnections.map((conn, idx) => {
+                    const isValidCoord = (c) => Array.isArray(c) && c.length === 2 &&
+                        c[0] !== null && c[0] !== undefined &&
+                        c[1] !== null && c[1] !== undefined &&
+                        !isNaN(c[0]) && !isNaN(c[1]);
+
+                    // Determine path to draw
+                    let pathPositions = [];
+                    if (conn.fullPathCoords && Array.isArray(conn.fullPathCoords) && conn.fullPathCoords.length > 0) {
+                        pathPositions = conn.fullPathCoords.filter(isValidCoord);
+                    } else if (conn.connectionPoint?.coords && conn.targetCoords) {
+                        if (isValidCoord(conn.connectionPoint.coords) && isValidCoord(conn.targetCoords)) {
+                            pathPositions = [conn.connectionPoint.coords, conn.targetCoords];
+                        }
+                    }
+
+                    if (pathPositions.length < 2) return null; // Skip invalid paths
+
+                    return (
+                        <React.Fragment key={`planned-conn-group-${idx}`}>
+                            <Polyline
+                                positions={pathPositions}
+                                pathOptions={{
+                                    color: '#10b981',
+                                    weight: 6,
+                                    opacity: 0.8,
+                                    lineCap: 'round'
+                                }}
+                            />
+                            {conn.targetCoords && isValidCoord(conn.targetCoords) && (
                                 <Marker
                                     position={conn.targetCoords}
                                     icon={createCustomIcon('#10b981', 'connection')}
@@ -551,85 +666,78 @@ const PipelineMap = ({
                                                 <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
                                                     CONNECTING TO
                                                 </Typography>
-                                                <Typography variant="body2" fontWeight={700}>
-                                                    {conn.connectionPoint?.name}
+                                                <Typography variant="body2" fontWeight={600}>
+                                                    {conn.connectionPoint?.type?.toUpperCase()} #{conn.connectionPoint?.id} ({conn.connectionPoint?.diameter || 'Unknown'}mm)
                                                 </Typography>
                                                 <Typography variant="caption" color="text.secondary">
-                                                    via {conn.waterSource?.name}
+                                                    Distance from point: {conn.newPipeRequired?.estimatedLength ? `${conn.newPipeRequired.estimatedLength}m` : 'N/A'}
                                                 </Typography>
                                             </Paper>
 
-                                            <Grid container spacing={1}>
-                                                <Grid size={6}>
-                                                    <Typography variant="caption" color="text.secondary" display="block">
-                                                        DISTANCE
-                                                    </Typography>
-                                                    <Typography variant="body2" fontWeight={700}>
-                                                        {conn.newPipeRequired?.estimatedLength} m
-                                                    </Typography>
-                                                </Grid>
-                                                <Grid size={6}>
-                                                    <Typography variant="caption" color="text.secondary" display="block">
-                                                        EST. COST
-                                                    </Typography>
-                                                    <Typography variant="body2" fontWeight={700} color="primary.main">
-                                                        {conn.newPipeRequired?.estimatedCost?.formatted}
-                                                    </Typography>
-                                                </Grid>
-                                            </Grid>
-
-                                            <Box sx={{ mt: 1.5, pt: 1, borderTop: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <Button
-                                                    size="small"
-                                                    color="error"
-                                                    variant="text"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        onDeleteConnection?.(idx);
-                                                    }}
-                                                    sx={{ fontSize: '10px', p: 0 }}
-                                                >
-                                                    Remove Plan
-                                                </Button>
-                                                <Typography variant="caption" fontWeight={600} color="success.dark">
-                                                    Optimized ✓
+                                            <Paper variant="outlined" sx={{ p: 1, mb: 1, bgcolor: 'primary.50' }}>
+                                                <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                                                    SOURCE
                                                 </Typography>
-                                            </Box>
+                                                <Typography variant="body2" fontWeight={600}>
+                                                    {conn.waterSource?.type?.toUpperCase()} #{conn.waterSource?.id}
+                                                </Typography>
+                                                <Typography variant="caption" color="text.secondary">
+                                                    Total Route: {conn.totalDistance ? `${conn.totalDistance} km` : 'N/A'}
+                                                </Typography>
+                                            </Paper>
+
+                                            <Alert severity="info" sx={{ py: 0, px: 1, '& .MuiAlert-message': { py: 0.5 } }}>
+                                                <Typography variant="caption">
+                                                    Est. Cost: <b>{conn.newPipeRequired?.estimatedCost?.formatted || 'N/A'}</b>
+                                                </Typography>
+                                            </Alert>
+
+                                            <Button
+                                                size="small"
+                                                color="error"
+                                                fullWidth
+                                                sx={{ mt: 1 }}
+                                                onClick={() => onDeleteConnection && onDeleteConnection(idx)}
+                                            >
+                                                Remove Plan
+                                            </Button>
                                         </Box>
                                     </Popup>
                                 </Marker>
-                            </>
-                        )}
-                    </React.Fragment>
-                ))}
+                            )}
+                        </React.Fragment>
+                    );
+                })}
 
                 {/* New Connection Target Marker */}
-                {newConnectionTarget && (
-                    <Marker
-                        position={newConnectionTarget}
-                        icon={createCustomIcon('#3b82f6', 'target')}
-                    >
-                        <Popup>
-                            <Box sx={{ p: 0.5, textAlign: 'center' }}>
-                                <Typography variant="subtitle2" fontWeight={700} gutterBottom>
-                                    📍 Targeted Location
-                                </Typography>
-                                <Typography variant="caption" display="block" color="text.secondary" sx={{ mb: 1.5 }}>
-                                    Optimal route calculation pending...
-                                </Typography>
-                                <Button
-                                    size="small"
-                                    variant="contained"
-                                    fullWidth
-                                    onClick={() => onMapClick?.({ lat: newConnectionTarget[0], lng: newConnectionTarget[1] })}
-                                >
-                                    Open Planner
-                                </Button>
-                            </Box>
-                        </Popup>
-                    </Marker>
-                )}
-            </MapContainer>
+                {
+                    newConnectionTarget && (
+                        <Marker
+                            position={newConnectionTarget}
+                            icon={createCustomIcon('#3b82f6', 'target')}
+                        >
+                            <Popup>
+                                <Box sx={{ p: 0.5, textAlign: 'center' }}>
+                                    <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                                        📍 Targeted Location
+                                    </Typography>
+                                    <Typography variant="caption" display="block" color="text.secondary" sx={{ mb: 1.5 }}>
+                                        Optimal route calculation pending...
+                                    </Typography>
+                                    <Button
+                                        size="small"
+                                        variant="contained"
+                                        fullWidth
+                                        onClick={() => onMapClick?.({ lat: newConnectionTarget[0], lng: newConnectionTarget[1] })}
+                                    >
+                                        Open Planner
+                                    </Button>
+                                </Box>
+                            </Popup>
+                        </Marker>
+                    )
+                }
+            </MapContainer >
 
             {/* Map Legend */}
             <Paper
@@ -687,8 +795,8 @@ const PipelineMap = ({
                         <Typography variant="caption">Complaint</Typography>
                     </Box>
                 </Stack>
-            </Paper>
-        </Box>
+            </Paper >
+        </Box >
     );
 };
 
@@ -1063,6 +1171,13 @@ const NewConnectionPlanner = ({ isOpen, onClose, onPlanRoute, targetCoords, onPi
     const theme = useTheme();
     const [routeResult, setRouteResult] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [pipeMaterial, setPipeMaterial] = useState('hdpe');
+
+    const PIPE_COSTS = {
+        'hdpe': { label: 'HDPE (110mm)', rate: 850 },
+        'pvc': { label: 'PVC (110mm)', rate: 450 },
+        'di': { label: 'Ductile Iron (100mm)', rate: 1800 }
+    };
 
     // Reset result when target changes
     useEffect(() => {
@@ -1141,6 +1256,26 @@ const NewConnectionPlanner = ({ isOpen, onClose, onPlanRoute, targetCoords, onPi
                             </Box>
                         </Paper>
 
+                        {/* Pipe Material Selection - ALWAYS VISIBLE */}
+                        <Box sx={{ mb: 2 }}>
+                            <TextField
+                                select
+                                label="Select Pipe Material"
+                                value={pipeMaterial}
+                                onChange={(e) => setPipeMaterial(e.target.value)}
+                                fullWidth
+                                size="small"
+                                SelectProps={{ native: true }}
+                                helperText={`Cost Estimate: ₹${PIPE_COSTS[pipeMaterial].rate}/m`}
+                            >
+                                {Object.entries(PIPE_COSTS).map(([key, config]) => (
+                                    <option key={key} value={key}>
+                                        {config.label}
+                                    </option>
+                                ))}
+                            </TextField>
+                        </Box>
+
                         {!routeResult && !loading && (
                             <Button
                                 variant="contained"
@@ -1209,19 +1344,20 @@ const NewConnectionPlanner = ({ isOpen, onClose, onPlanRoute, targetCoords, onPi
                                             </Typography>
                                         </Paper>
                                     </Grid>
-                                    <Grid size={6}>
-                                        <Paper sx={{ p: 2 }}>
+                                    <Grid size={12}>
+                                        <Paper sx={{ p: 2, bgcolor: 'primary.50', border: '1px solid', borderColor: 'primary.200' }}>
                                             <Typography variant="caption" color="text.secondary">
-                                                Est. Connection Cost
+                                                Est. Connection Cost ({pipeMaterial.toUpperCase()})
                                             </Typography>
                                             <Typography variant="body1" fontWeight={700} color="primary.main">
-                                                {routeResult.newPipeRequired?.estimatedCost?.formatted}
+                                                ₹ {((routeResult.newPipeRequired?.estimatedLength || 0) * PIPE_COSTS[pipeMaterial].rate).toLocaleString()}
+                                                <Typography component="span" variant="caption" sx={{ ml: 1, display: 'block', color: 'text.secondary' }}>
+                                                    {routeResult.isFallback && <span style={{ color: '#f59e0b' }}>⚠️ Nearest junction unreachable. Connected to pipe/valve.</span>}
+                                                </Typography>
                                             </Typography>
                                         </Paper>
                                     </Grid>
                                 </Grid>
-
-
                             </Box>
                         )}
 
@@ -1291,7 +1427,7 @@ const NewConnectionPlanner = ({ isOpen, onClose, onPlanRoute, targetCoords, onPi
                     </Button>
                 )}
             </DialogActions>
-        </Dialog>
+        </Dialog >
     );
 };
 
@@ -1361,6 +1497,195 @@ const ResolveDialog = ({ open, onClose, target, type, onSubmit }) => {
 };
 
 // ============================================================================
+// MAX FLOW ANALYSIS COMPONENT
+// ============================================================================
+
+const MaxFlowAnalysisDialog = ({ isOpen, onClose, pipelineData, onResultsFound, pickingMode, setPickingMode }) => {
+    const [sourceId, setSourceId] = useState('');
+    const [sinkId, setSinkId] = useState('');
+    const [result, setResult] = useState(null);
+    const [loading, setLoading] = useState(false);
+
+    // Filter relevant nodes for selection
+    const sources = useMemo(() =>
+        window.pipelineData?.nodes?.filter(n => n.type === 'reservoir' || n.type === 'esr') || [],
+        [window.pipelineData]);
+
+    const availableNodes = pipelineData?.nodes || [];
+    const sourceOptions = availableNodes.filter(n => n.type === 'reservoir' || n.type === 'esr' || n.type === 'pump');
+
+    // Handle incoming picks from map
+    useEffect(() => {
+        if (pickingMode?.pickedNode) {
+            if (pickingMode.type === 'source') {
+                setSourceId(pickingMode.pickedNode.id);
+            } else if (pickingMode.type === 'sink') {
+                setSinkId(pickingMode.pickedNode.id);
+            }
+            // Reset picking mode after selection (handled by parent mostly, but we ack here)
+            setPickingMode(null); // Return to dialog focus
+        }
+    }, [pickingMode, setPickingMode]);
+
+
+    // Auto-select first source if available
+    useEffect(() => {
+        if (isOpen && sourceOptions.length > 0 && !sourceId && !pickingMode) {
+            setSourceId(sourceOptions[0].id);
+        }
+    }, [isOpen, sourceOptions]);
+
+    const handleAnalyze = async () => {
+        if (!sourceId || !sinkId) return;
+
+        setLoading(true);
+        try {
+            const res = await axios.get('/api/analysis/max-flow', {
+                params: { source: sourceId, sink: sinkId }
+            });
+            setResult(res.data);
+            if (res.data.success) {
+                onResultsFound?.(res.data.bottlenecks || []);
+            }
+        } catch (err) {
+            console.error("Max Flow calculation error:", err);
+            setResult({ error: err.response?.data?.error || 'Analysis failed' });
+        }
+        setLoading(false);
+    };
+
+    const handleClose = () => {
+        setResult(null);
+        // We keep the map bottlenecks visible unless specifically cleared?
+        // Or clear them on close? Let's clear on close for a clean UI.
+        onResultsFound?.([]);
+        onClose();
+    };
+
+    return (
+        <Dialog
+            open={isOpen && !pickingMode} // Hide dialog when picking 
+            onClose={handleClose}
+            maxWidth="sm"
+            fullWidth
+            sx={{ visibility: pickingMode ? 'hidden' : 'visible' }} // Keeping it mounted but hidden preserves state
+        >
+            <DialogTitle>
+                <Box display="flex" alignItems="center" gap={1}>
+                    <Activity size={24} color="#f59e0b" />
+                    <Typography variant="h6" fontWeight={700}>
+                        Network Capacity Analysis (Max Flow)
+                    </Typography>
+                </Box>
+            </DialogTitle>
+            <DialogContent>
+                <Alert severity="info" sx={{ mb: 3 }}>
+                    Identify capacity bottlenecks between a water source and a destination.
+                </Alert>
+
+                <Stack spacing={3}>
+                    <Box display="flex" gap={1} alignItems="flex-start">
+                        <TextField
+                            select
+                            label="Source Node (WTP/ESR)"
+                            value={sourceId}
+                            onChange={(e) => setSourceId(e.target.value)}
+                            SelectProps={{ native: true }}
+                            fullWidth
+                        >
+                            <option value="">Select Source...</option>
+                            {sourceOptions.map(n => (
+                                <option key={n.id} value={n.id}>
+                                    {n.name} ({n.type.toUpperCase()})
+                                </option>
+                            ))}
+                        </TextField>
+                        <Tooltip title="Pick on Map">
+                            <IconButton
+                                color="primary"
+                                sx={{ mt: 1, border: '1px solid', borderColor: 'divider' }}
+                                onClick={() => setPickingMode({ type: 'source' })}
+                            >
+                                <MapPin size={20} />
+                            </IconButton>
+                        </Tooltip>
+                    </Box>
+
+                    <Box display="flex" gap={1} alignItems="flex-start">
+                        <TextField
+                            label="Target Node ID (Sink)"
+                            value={sinkId}
+                            onChange={(e) => setSinkId(e.target.value)}
+                            placeholder="Enter Node ID (e.g., junction_123)"
+                            helperText="Copy ID from map popup or use Pick on Map"
+                            fullWidth
+                        />
+                        <Tooltip title="Pick on Map">
+                            <IconButton
+                                color="primary"
+                                sx={{ mt: 1, border: '1px solid', borderColor: 'divider' }}
+                                onClick={() => setPickingMode({ type: 'sink' })}
+                            >
+                                <MapPin size={20} />
+                            </IconButton>
+                        </Tooltip>
+                    </Box>
+
+                    <Button
+                        variant="contained"
+                        size="large"
+                        onClick={handleAnalyze}
+                        disabled={loading || !sourceId || !sinkId}
+                        startIcon={loading ? <CircularProgress size={20} /> : <TrendingUp />}
+                    >
+                        {loading ? 'Analyzing...' : 'Calculate Max Flow'}
+                    </Button>
+                </Stack>
+
+                {result && (
+                    <Box sx={{ mt: 3, p: 2, bgcolor: result.error ? 'error.50' : 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+                        {result.error ? (
+                            <Typography color="error">{result.error}</Typography>
+                        ) : (
+                            <>
+                                <Typography variant="h5" color="primary.main" fontWeight={800} gutterBottom>
+                                    Max Flow: {result.maxFlow} units
+                                </Typography>
+                                <Typography variant="body2" paragraph>
+                                    {result.message}
+                                </Typography>
+                                <Typography variant="subtitle2" fontWeight={700}>
+                                    Bottlenecks Identified ({result.bottlenecks?.length || 0}):
+                                </Typography>
+                                <List dense>
+                                    {result.bottlenecks?.slice(0, 5).map((edge, i) => (
+                                        <ListItem key={i}>
+                                            <AlertTriangle size={16} color="orange" style={{ marginRight: 8 }} />
+                                            <ListItemText
+                                                primary={`Pipe Segment: ${edge.id}`}
+                                                secondary={`Capacity: ${edge.capacity} | Flow: ${edge.flow}`}
+                                            />
+                                        </ListItem>
+                                    ))}
+                                    {result.bottlenecks?.length > 5 && (
+                                        <Typography variant="caption" sx={{ pl: 4 }}>
+                                            ...and {result.bottlenecks.length - 5} more segments.
+                                        </Typography>
+                                    )}
+                                </List>
+                            </>
+                        )}
+                    </Box>
+                )}
+            </DialogContent>
+            <DialogActions>
+                <Button onClick={handleClose}>Close</Button>
+            </DialogActions>
+        </Dialog>
+    );
+};
+
+// ============================================================================
 // MAIN DASHBOARD COMPONENT
 // ============================================================================
 
@@ -1375,6 +1700,16 @@ const WaterIntelligenceDashboard = () => {
     const [activeTab, setActiveTab] = useState(0);
     const [showPipelines, setShowPipelines] = useState(true);
     const [connectionPlannerOpen, setConnectionPlannerOpen] = useState(false);
+    const [maxFlowOpen, setMaxFlowOpen] = useState(false);
+    const [maxFlowPickingMode, setMaxFlowPickingMode] = useState(null); // { type: 'source'|'sink', pickedNode: null }
+    const [pickingMode, setPickingMode] = useState(null); // Generic picking state
+
+    const handleNodePick = (node) => {
+        if (maxFlowPickingMode) {
+            setMaxFlowPickingMode(prev => ({ ...prev, pickedNode: node }));
+        }
+    }; // New state for Max Flow
+    const [bottlenecks, setBottlenecks] = useState([]); // Bottleneck edges for visualization
     const [plannedConnections, setPlannedConnections] = useState([]); // Array of planned routes
     const [resolveDialog, setResolveDialog] = useState({ open: false, target: null, type: 'cluster' }); // type: 'issue' or 'cluster'
 
@@ -1384,7 +1719,7 @@ const WaterIntelligenceDashboard = () => {
         reservoirs: true,
         esrs: true,
         pumps: true,
-        junctions: true,
+        junctions: false, // Default back to false for performance, only visible when zoomed in
         valves: true,
         clusters: true,
         complaints: true
@@ -1580,6 +1915,35 @@ const WaterIntelligenceDashboard = () => {
                 </Alert>
             )}
 
+            {/* Max Flow Picking Banner */}
+            {maxFlowPickingMode && !maxFlowPickingMode.pickedNode && (
+                <Alert
+                    severity="info"
+                    variant="filled"
+                    icon={<MapPin />}
+                    sx={{
+                        position: 'fixed',
+                        top: 80,
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        zIndex: 2000,
+                        width: 'auto',
+                        minWidth: 450,
+                        boxShadow: 3,
+                        bgcolor: 'secondary.main'
+                    }}
+                    action={
+                        <Button color="inherit" size="small" onClick={() => setMaxFlowPickingMode(null)}>
+                            Cancel Picking
+                        </Button>
+                    }
+                >
+                    <Typography fontWeight={600}>
+                        Select a {maxFlowPickingMode.type === 'source' ? 'SOURCE (Reservoir/ESR)' : 'TARGET (Junction/Valve)'} node on the map
+                    </Typography>
+                </Alert>
+            )}
+
             <Container maxWidth="xl">
                 {/* Header */}
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -1592,6 +1956,13 @@ const WaterIntelligenceDashboard = () => {
                         </Typography>
                     </Box>
                     <Stack direction="row" spacing={2}>
+                        <Button
+                            variant="outlined"
+                            startIcon={<Activity size={18} />}
+                            onClick={() => setMaxFlowOpen(true)}
+                        >
+                            Capacity Analysis
+                        </Button>
                         <Button
                             variant="outlined"
                             startIcon={<Plus size={18} />}
@@ -1663,7 +2034,7 @@ const WaterIntelligenceDashboard = () => {
                         </AlertTitle>
                         {prioritized.critical.slice(0, 2).map(c => (
                             <Typography key={c.id} variant="body2">
-                                • #{c.id}: {c.category} - {c.district || 'Unknown Area'}
+                                • #{c.id}: {c.category} - {c.area || 'Unknown Area'}
                             </Typography>
                         ))}
                     </Alert>
@@ -1778,11 +2149,13 @@ const WaterIntelligenceDashboard = () => {
                             <PipelineMap
                                 complaints={prioritized.all}
                                 clusters={clusters}
-                                selectionComplaint={selectedComplaint}
+                                selectedComplaint={selectedComplaint}
+                                selectedCluster={selectedCluster}
                                 onComplaintSelect={handleComplaintSelect}
                                 showPipelines={showPipelines}
                                 plannedConnections={plannedConnections}
                                 pipelineData={pipelineData}
+                                bottlenecks={bottlenecks}
                                 layerVisibility={layerVisibility}
                                 isPickingLocation={isPickingLocation}
                                 onMapClick={handleMapClick}
@@ -1790,6 +2163,8 @@ const WaterIntelligenceDashboard = () => {
                                 // Add handler for cluster selection
                                 onClusterSelect={handleClusterSelect}
                                 onDeleteConnection={handleDeleteConnection}
+                                pickingMode={!!maxFlowPickingMode}
+                                onNodePick={handleNodePick}
                             />
                         </Paper>
                     </Grid>
@@ -1855,7 +2230,7 @@ const WaterIntelligenceDashboard = () => {
                                                     {complaint.description?.substring(0, 60)}...
                                                 </Typography>
                                                 <Typography variant="caption" color="text.secondary">
-                                                    {complaint.district} • {new Date(complaint.created_at).toLocaleTimeString()}
+                                                    {complaint.area} • {new Date(complaint.created_at).toLocaleTimeString()}
                                                 </Typography>
                                             </Box>
                                         ))
@@ -1887,7 +2262,7 @@ const WaterIntelligenceDashboard = () => {
                                                 {complaint.description?.substring(0, 60)}...
                                             </Typography>
                                             <Typography variant="caption" color="text.secondary">
-                                                {complaint.district}
+                                                {complaint.area}
                                             </Typography>
                                         </Box>
                                     ))
@@ -1999,6 +2374,16 @@ const WaterIntelligenceDashboard = () => {
                 onPickLocation={handlePickLocation}
                 existingConnections={plannedConnections}
                 onDeleteConnection={handleDeleteConnection}
+            />
+
+            {/* Max Flow Analysis Dialog */}
+            <MaxFlowAnalysisDialog
+                isOpen={maxFlowOpen}
+                onClose={() => setMaxFlowOpen(false)}
+                pipelineData={pipelineData}
+                onResultsFound={(b) => setBottlenecks(b)}
+                pickingMode={maxFlowPickingMode}
+                setPickingMode={setMaxFlowPickingMode}
             />
 
             {/* CSS for custom animations */}

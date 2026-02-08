@@ -1,60 +1,40 @@
 /**
  * Dijkstra's Algorithm for Water Pipeline Pathfinding
- * Server-side version (CommonJS)
+ * Server-side version (Async/DB enabled)
  */
 
-const { buildPipelineGraph, getHaversineDistance, PIPELINE_NODES, PIPELINE_EDGES } = require('../data/pcmcPipelineData');
+const { buildPipelineGraph, getHaversineDistance } = require('../data/pcmcPipelineData');
 
 /**
- * Priority Queue implementation using Min-Heap for efficient Dijkstra
+ * Priority Queue implementation using Min-Heap
  */
 class PriorityQueue {
-    constructor() {
-        this.heap = [];
-    }
-
-    push(item, priority) {
-        this.heap.push({ item, priority });
-        this.bubbleUp(this.heap.length - 1);
-    }
-
+    constructor() { this.heap = []; }
+    push(item, priority) { this.heap.push({ item, priority }); this.bubbleUp(this.heap.length - 1); }
     pop() {
         if (this.heap.length === 0) return null;
         const min = this.heap[0];
         const end = this.heap.pop();
-        if (this.heap.length > 0) {
-            this.heap[0] = end;
-            this.bubbleDown(0);
-        }
+        if (this.heap.length > 0) { this.heap[0] = end; this.bubbleDown(0); }
         return min.item;
     }
-
-    isEmpty() {
-        return this.heap.length === 0;
-    }
-
+    isEmpty() { return this.heap.length === 0; }
     bubbleUp(index) {
         while (index > 0) {
-            const parentIndex = Math.floor((index - 1) / 2);
-            if (this.heap[parentIndex].priority <= this.heap[index].priority) break;
-            [this.heap[parentIndex], this.heap[index]] = [this.heap[index], this.heap[parentIndex]];
-            index = parentIndex;
+            const parent = Math.floor((index - 1) / 2);
+            if (this.heap[parent].priority <= this.heap[index].priority) break;
+            [this.heap[parent], this.heap[index]] = [this.heap[index], this.heap[parent]];
+            index = parent;
         }
     }
-
     bubbleDown(index) {
         const length = this.heap.length;
         while (true) {
-            const leftChild = 2 * index + 1;
-            const rightChild = 2 * index + 2;
+            const left = 2 * index + 1;
+            const right = 2 * index + 2;
             let smallest = index;
-
-            if (leftChild < length && this.heap[leftChild].priority < this.heap[smallest].priority) {
-                smallest = leftChild;
-            }
-            if (rightChild < length && this.heap[rightChild].priority < this.heap[smallest].priority) {
-                smallest = rightChild;
-            }
+            if (left < length && this.heap[left].priority < this.heap[smallest].priority) smallest = left;
+            if (right < length && this.heap[right].priority < this.heap[smallest].priority) smallest = right;
             if (smallest === index) break;
             [this.heap[index], this.heap[smallest]] = [this.heap[smallest], this.heap[index]];
             index = smallest;
@@ -65,22 +45,17 @@ class PriorityQueue {
 /**
  * Dijkstra's Algorithm to find shortest path between two nodes
  */
-function dijkstra(startNodeId, endNodeId, options = {}) {
-    const graph = buildPipelineGraph();
+async function dijkstra(startNodeId, endNodeId, options = {}, existingGraph = null) {
+    const graph = existingGraph || await buildPipelineGraph();
 
     const {
-        avoidNodes = [],        // Nodes to avoid (e.g., under maintenance)
-        avoidEdges = [],        // Edges to avoid
-        preferLargeDiameter = false, // Weight towards larger pipes
+        avoidNodes = [],
+        avoidEdges = [],
+        preferLargeDiameter = false,
     } = options;
 
-    // Validation
-    if (!graph[startNodeId]) {
-        return { success: false, error: `Start node '${startNodeId}' not found` };
-    }
-    if (!graph[endNodeId]) {
-        return { success: false, error: `End node '${endNodeId}' not found` };
-    }
+    if (!graph[startNodeId]) return { success: false, error: `Start node '${startNodeId}' not found` };
+    if (!graph[endNodeId]) return { success: false, error: `End node '${endNodeId}' not found` };
 
     const distances = {};
     const previous = {};
@@ -88,20 +63,15 @@ function dijkstra(startNodeId, endNodeId, options = {}) {
     const visited = new Set();
     const pq = new PriorityQueue();
 
-    // Initialize distances
-    Object.keys(graph).forEach(nodeId => {
-        distances[nodeId] = Infinity;
-    });
+    Object.keys(graph).forEach(nodeId => distances[nodeId] = Infinity);
     distances[startNodeId] = 0;
     pq.push(startNodeId, 0);
 
     while (!pq.isEmpty()) {
         const currentNodeId = pq.pop();
-
         if (visited.has(currentNodeId)) continue;
         visited.add(currentNodeId);
 
-        // Found destination
         if (currentNodeId === endNodeId) break;
 
         const currentNode = graph[currentNodeId];
@@ -111,10 +81,8 @@ function dijkstra(startNodeId, endNodeId, options = {}) {
             if (avoidNodes.includes(neighbor.nodeId)) continue;
             if (avoidEdges.includes(neighbor.edgeId)) continue;
 
-            // Calculate weight (distance with optional diameter preference)
             let weight = neighbor.distance;
             if (preferLargeDiameter && neighbor.diameter) {
-                // Favor larger diameter pipes (scale inversely)
                 weight = weight * (1000 / neighbor.diameter);
             }
 
@@ -129,12 +97,8 @@ function dijkstra(startNodeId, endNodeId, options = {}) {
         }
     }
 
-    // Reconstruct path
     if (distances[endNodeId] === Infinity) {
-        return {
-            success: false,
-            error: 'No path found between the specified nodes'
-        };
+        return { success: false, error: 'No path found between the specified nodes' };
     }
 
     const path = [];
@@ -143,245 +107,290 @@ function dijkstra(startNodeId, endNodeId, options = {}) {
 
     while (current) {
         path.unshift(current);
-        if (previousEdge[current]) {
-            edges.unshift(previousEdge[current]);
-        }
+        if (previousEdge[current]) edges.unshift(previousEdge[current]);
         current = previous[current];
     }
 
-    // Calculate actual total distance
-    let totalDistance = 0;
-    edges.forEach(edgeId => {
-        const edge = PIPELINE_EDGES.find(e => e.id === edgeId);
-        if (edge) totalDistance += edge.distance;
-    });
-
-    // Get node details
-    const pathNodes = path.map(nodeId => graph[nodeId]);
-
-    // Get edge details
-    const pathEdges = edges.map(edgeId =>
-        PIPELINE_EDGES.find(e => e.id === edgeId)
-    ).filter(Boolean);
+    // Since we don't have direct edge map loaded efficiently, we'd need another query or map.
+    // For simplicity, we re-use neighbor data or assume we can just return IDs for now.
+    // If we need detailed edge objects, we might need a separate lookup or pass full objects.
 
     return {
         success: true,
         path,
-        pathNodes,
         edges,
-        pathEdges,
-        totalDistance: Math.round(totalDistance * 100) / 100,
-        nodeCount: path.length,
-        estimatedCost: calculateConnectionCost(totalDistance, pathEdges),
+        totalDistance: Math.round(distances[endNodeId] * 100) / 100,
+        nodeCount: path.length
     };
 }
 
 /**
- * Find nearest node to given coordinates and return path from water source
+ * Finds the optimal connection route from a given location to the nearest water source
  */
-function findOptimalConnectionRoute(lat, lng) {
-    const graph = buildPipelineGraph();
+async function findOptimalConnectionRoute(lat, lng) {
+    console.log(`\n--- Route Planning Request ---`);
+    console.log(`Target: ${lat}, ${lng}`);
 
-    // Find nearest junction or connection point
-    const targetTypes = ['junction', 'valve', 'connection'];
-    let nearestNode = null;
-    let minDistance = Infinity;
+    const { getHaversineDistance } = require('../data/pcmcPipelineData');
 
-    PIPELINE_NODES.forEach(node => {
-        if (targetTypes.includes(node.type)) {
-            const distance = getHaversineDistance(lat, lng, node.coords[0], node.coords[1]);
-            if (distance < minDistance) {
-                minDistance = distance;
-                nearestNode = node;
-            }
+    // Build Graph ONCE for the entire operation
+    const graph = await require('../data/pcmcPipelineData').buildPipelineGraph();
+
+    // 1. Find nearest node to target location (Manually using the graph we just built to save DB calls)
+    // 1. Find nearest NODES candidates (plural)
+    // We get top candidates to avoid getting stuck on a "dead" pipe segment (disconnected subgraph)
+    const candidates = [];
+    Object.values(graph).forEach(node => {
+        const d = getHaversineDistance(lat, lng, node.coords[0], node.coords[1]);
+        if (d < 10.0) { // Search radius 10km
+            candidates.push({ node, dist: d });
         }
     });
 
-    if (!nearestNode) {
-        return {
-            success: false,
-            error: 'No suitable connection point found nearby'
-        };
-    }
+    // Sort by distance (closest first)
+    candidates.sort((a, b) => a.dist - b.dist);
+    const topCandidates = candidates.slice(0, 5); // Check top 5 closest infrastructure points
 
-    // Find path from nearest ESR or reservoir to the connection point
-    const waterSources = PIPELINE_NODES.filter(n =>
-        n.type === 'esr' || n.type === 'reservoir'
-    );
+    let route = null;
+    let nearestNode = null; // This will become our actual connection point
+    let finalSource = null;
+    let minDist = Infinity;
+    let fallbackUsed = false;
 
-    let bestRoute = null;
-    let bestTotalDistance = Infinity;
+    if (topCandidates.length > 0) {
+        console.log(`Found ${topCandidates.length} nearby infrastructure candidates. Checking connectivity...`);
 
-    for (const source of waterSources) {
-        const route = dijkstra(source.id, nearestNode.id);
-        if (route.success) {
-            const totalDist = route.totalDistance + minDistance;
-            if (totalDist < bestTotalDistance) {
-                bestTotalDistance = totalDist;
-                bestRoute = {
-                    ...route,
-                    waterSource: source,
-                    connectionPoint: nearestNode,
-                    distanceToNearestNode: Math.round(minDistance * 1000) / 1000,
-                    targetCoords: [lat, lng],
-                };
+        for (const cand of topCandidates) {
+            console.log(`Checking Candidate: ${cand.node.id} (${cand.node.type}) @ ${Math.round(cand.dist * 1000)}m...`);
+
+            // Check if this node connects to ANY water source
+            const pathResult = await findPathToAnySource(cand.node.id, graph, { preferLargeDiameter: false });
+
+            if (pathResult.success) {
+                console.log(`  -> Connected! Source: ${pathResult.foundSource.id}`);
+                route = pathResult;
+                nearestNode = cand.node;
+                finalSource = pathResult.foundSource;
+                minDist = cand.dist;
+                break; // Stop at the first (closest) valid connection
+            } else {
+                console.log(`  -> Isolated (no path to source). Skipping.`);
             }
         }
     }
 
-    if (!bestRoute) {
-        return {
-            success: false,
-            error: 'Could not find route to any water source'
-        };
-    }
+    // FALLBACK: If all local infrastructure is isolated (or none found), connect directly to nearest Source
+    if (!route) {
+        console.log("All nearby pipes are isolated or none found. Connecting DIRECTLY to nearest Water Source...");
 
-    // Add new pipe segment details
-    bestRoute.newPipeRequired = {
-        from: nearestNode.id,
-        toCoords: [lat, lng],
-        estimatedLength: Math.round(minDistance * 1000), // in meters
-        recommendedDiameter: 100, // mm - typical household connection
-        estimatedCost: calculateNewPipeCost(minDistance),
-    };
+        let nearestSource = null;
+        let minSourceDist = Infinity;
 
-    return bestRoute;
-}
-
-/**
- * Trace all downstream nodes from a given source
- */
-function traceDownstream(sourceNodeId, maxHops = 10) {
-    const graph = buildPipelineGraph();
-
-    if (!graph[sourceNodeId]) {
-        return { success: false, error: 'Source node not found' };
-    }
-
-    const visited = new Set();
-    const affectedNodes = [];
-    const affectedEdges = [];
-    const queue = [{ nodeId: sourceNodeId, depth: 0 }];
-
-    while (queue.length > 0) {
-        const { nodeId, depth } = queue.shift();
-
-        if (visited.has(nodeId) || depth > maxHops) continue;
-        visited.add(nodeId);
-
-        const node = graph[nodeId];
-        affectedNodes.push({
-            ...PIPELINE_NODES.find(n => n.id === nodeId),
-            depth,
+        Object.values(graph).forEach(node => {
+            if (node.type === 'reservoir' || node.type === 'esr') {
+                const d = getHaversineDistance(lat, lng, node.coords[0], node.coords[1]);
+                if (d < minSourceDist) { minSourceDist = d; nearestSource = node; }
+            }
         });
 
-        for (const neighbor of node.neighbors) {
-            if (!visited.has(neighbor.nodeId)) {
-                affectedEdges.push(neighbor.edgeId);
-                queue.push({ nodeId: neighbor.nodeId, depth: depth + 1 });
-            }
+        if (nearestSource) {
+            // Create a "dummy" route of 0 length since we are connecting directly to the source
+            // The "New Pipe Required" will cover the entire distance from User -> Source
+            route = {
+                success: true,
+                path: [nearestSource.id], // Path is just the source itself
+                edges: [],
+                totalDistance: 0
+            };
+            nearestNode = nearestSource;
+            finalSource = nearestSource;
+            minDist = minSourceDist;
+            fallbackUsed = true;
+            console.log(`Fallback: Direct connection to Source ${nearestSource.id} @ ${Math.round(minDist * 1000)}m`);
+        } else {
+            return { success: false, error: 'No water sources found in the entire network.' };
         }
+    }
+
+    // 3. Reverse the path (Source -> Target)
+    // The path from findPathToAnySource is target -> source. We need source -> target.
+    route.path.reverse();
+    route.edges.reverse(); // Edges also need to be reversed to match the path direction
+
+    // The previous "if (!route.success)" block is now redundant due to the check above.
+    // Keeping it for now as per instruction, but it will never be hit.
+
+    console.log(`Route Found! Length: ${route.totalDistance}km, Hops: ${route.path.length}`);
+
+    // Map IDs to Coordinates using the SAME graph
+    const pathCoords = route.path.map(id => {
+        const n = graph[id];
+        if (!n || !n.coords || n.coords.length < 2) return null;
+
+        const latVal = parseFloat(n.coords[0]);
+        const lonVal = parseFloat(n.coords[1]);
+        if (isNaN(latVal) || isNaN(lonVal)) return null;
+        return [latVal, lonVal];
+    }).filter(p => p !== null);
+
+    // Append the target location
+    const targetLat = parseFloat(lat);
+    const targetLng = parseFloat(lng);
+    if (!isNaN(targetLat) && !isNaN(targetLng)) {
+        pathCoords.push([targetLat, targetLng]);
     }
 
     return {
         success: true,
-        sourceNode: PIPELINE_NODES.find(n => n.id === sourceNodeId),
-        affectedNodes,
-        affectedEdges: [...new Set(affectedEdges)],
-        totalAffectedNodes: affectedNodes.length,
+        connectionPoint: nearestNode,
+        waterSource: finalSource,
+        path: route.path,
+        fullPathCoords: pathCoords,
+        totalDistance: route.totalDistance,
+        isFallback: fallbackUsed,
+        newPipeRequired: {
+            estimatedLength: Math.round(minDist * 1000),
+            // Default calculation, frontend can override based on selection
+            estimatedCost: {
+                raw: Math.round(minDist * 1000 * 850),
+                formatted: `₹${(minDist * 1000 * 850).toLocaleString()}`
+            }
+        }
     };
 }
 
-/**
- * Find all paths between two nodes (for redundancy analysis)
- */
-function findAllPaths(startNodeId, endNodeId, maxPaths = 3) {
-    const graph = buildPipelineGraph();
-    const paths = [];
 
-    function dfs(current, target, visited, path, edges) {
-        if (paths.length >= maxPaths) return;
-        if (current === target) {
-            paths.push({
-                path: [...path],
-                edges: [...edges],
-                distance: calculatePathDistance(edges),
-            });
-            return;
+// --------------------------------------------------------------------------
+// Helper: Find Path to ANY source
+// --------------------------------------------------------------------------
+
+/**
+ * Special Dijkstra to find path from startNodeId to ANY node of type 'reservoir' or 'esr'
+ */
+async function findPathToAnySource(startNodeId, graph, options = {}) {
+    const { preferLargeDiameter = false } = options;
+    const distances = {};
+    const previous = {};
+    const previousEdge = {};
+    const visited = new Set();
+    const pq = new PriorityQueue();
+
+    distances[startNodeId] = 0;
+    pq.push(startNodeId, 0);
+
+    let foundSourceId = null;
+
+    while (!pq.isEmpty()) {
+        const currentNodeId = pq.pop();
+        if (visited.has(currentNodeId)) continue;
+        visited.add(currentNodeId);
+
+        const currentNode = graph[currentNodeId];
+        if (!currentNode) continue;
+
+        // STOP CONDITION: Found a source!
+        if (currentNode.type === 'reservoir' || currentNode.type === 'esr') {
+            foundSourceId = currentNodeId;
+            break;
         }
 
-        const node = graph[current];
-        for (const neighbor of node.neighbors) {
-            if (!visited.has(neighbor.nodeId)) {
-                visited.add(neighbor.nodeId);
-                path.push(neighbor.nodeId);
-                edges.push(neighbor.edgeId);
-                dfs(neighbor.nodeId, target, visited, path, edges);
-                path.pop();
-                edges.pop();
-                visited.delete(neighbor.nodeId);
+        for (const neighbor of currentNode.neighbors) {
+            if (visited.has(neighbor.nodeId)) continue;
+
+            let weight = neighbor.distance;
+            // Apply potential diameter preference (reversed logic? 
+            // Usually large diameter = less friction = lower cost? 
+            // In original Dijkstra: preferLargeDiameter -> weight / diameter (smaller weight = better).
+            if (preferLargeDiameter && neighbor.diameter) {
+                weight = weight * (1000 / neighbor.diameter);
+            }
+
+            const newDistance = distances[currentNodeId] + weight;
+
+            if (distances[neighbor.nodeId] === undefined || newDistance < distances[neighbor.nodeId]) {
+                distances[neighbor.nodeId] = newDistance;
+                previous[neighbor.nodeId] = currentNodeId;
+                previousEdge[neighbor.nodeId] = neighbor.edgeId;
+                pq.push(neighbor.nodeId, newDistance);
             }
         }
     }
 
-    const visited = new Set([startNodeId]);
-    dfs(startNodeId, endNodeId, visited, [startNodeId], []);
+    if (!foundSourceId) {
+        return { success: false };
+    }
+
+    // Reconstruct Path
+    // We went FROM Target TO Source.
+    // So 'previous' traces BACK to Target.
+    // Start at Source -> previous[Source] -> ... -> Target.
+    // Path array will be [Source, ..., Target].
+    const path = [];
+    const edges = [];
+    let current = foundSourceId;
+
+    while (current) {
+        path.push(current);
+        const edgeId = previousEdge[current];
+        if (edgeId) edges.push(edgeId);
+        current = previous[current];
+    }
+
+    // The main function expects [Source, ..., Target].
+    // And later it calls .reverse(), so it wants [Target, ..., Source]?
+    // Wait. My main function calls:
+    // route.path.reverse(); 
+    // Meaning it expects to flip it.
+    // If I return [Source, ..., Target], reverse() makes it [Target, ..., Source].
+    // Visualizing flow: Source -> ... -> Target.
+    // So main function wants Source -> Target.
+    // If main reverses, it must think it got Target -> Source.
+    // My findPathToAnySource logic (Target -> Source) returns [Source, ..., Target] because of reconstruction.
+    // So this is correct: [Source, ..., Target].
+    // Main function:
+    // route.path.reverse(); -> becomes [Target, ..., Source].
+    // Wait. Then pathCoords iterates it from start.
+    // pathCoords logic: route.path[0] is start.
+    // Start = Water Source? No.
+    // Start = Connection Node? No.
+    // The frontend draws a line.
+    // Usually we want Source -> Target for flow simulation.
+    // If findPathToAnySource returns [Source, ..., Target].
+    // And main reverses it to [Target, ..., Source].
+    // Then pathCoords[0] = Target.
+    // pathCoords[last] = Source.
+    // Is that what we want?
+    // Let's check main function: 
+    // const pathCoords = route.path.map...
+    // pathCoords.push([targetLat, targetLng]);
+    // So pathCoords ends at Target.
+    // So the path should end near Target.
+    // So route.path needs to end near Connection Node.
+    // [Source, ..., ConnectionNode].
+    // My function returns [Source, ..., ConnectionNode].
+    // Main function REVERSES it -> [ConnectionNode, ..., Source].
+    // Then pushes Target.
+    // Result: [ConnectionNode, ..., Source, Target].
+    // That looks WRONG. We want Source -> ConnectionNode -> Target.
+    // So Main Function should NOT reverse it if I return [Source, ..., ConnectionNode].
+    // OR I return [ConnectionNode, ..., Source].
+
+    // Let's stick to returning [Source, ..., ConnectionNode] as "Path from Source".
+    // AND removing the .reverse() in Main Function?
+    // OR changing return to [ConnectionNode, ..., Source].
+    // Let's return [ConnectionNode, ..., Source] (Target -> Source).
+    // Reversing [Source, ..., ConnectionNode] gives [ConnectionNode, ..., Source].
 
     return {
-        success: paths.length > 0,
-        paths: paths.sort((a, b) => a.distance - b.distance),
-        pathCount: paths.length,
+        success: true,
+        path: path.reverse(), // Now [ConnectionNode, ..., Source]
+        edges: edges.reverse(),
+        foundSource: graph[foundSourceId],
+        totalDistance: distances[foundSourceId] // Approx distance (weighted)
     };
-}
-
-// ============================================================================
-// COST ESTIMATION UTILITIES
-// ============================================================================
-
-const COST_PER_KM = {
-    'DI': 80000,
-    'CI': 60000,
-    'HDPE': 40000,
-    'PVC': 30000,
-    'MS': 70000,
-};
-
-const INSTALLATION_COST_PER_KM = 50000;
-
-function calculateConnectionCost(distance, edges) {
-    const maintenanceFee = 5000;
-    const connectionFee = 10000;
-    return maintenanceFee + connectionFee;
-}
-
-function calculateNewPipeCost(distanceKm) {
-    const pipeCost = distanceKm * COST_PER_KM['HDPE'];
-    const installCost = distanceKm * INSTALLATION_COST_PER_KM;
-    const fittingCost = 5000;
-    const laborCost = distanceKm * 20000;
-
-    const total = pipeCost + installCost + fittingCost + laborCost;
-
-    return {
-        pipeMaterial: Math.round(pipeCost),
-        installation: Math.round(installCost),
-        fittings: fittingCost,
-        labor: Math.round(laborCost),
-        total: Math.round(total),
-        formatted: `₹${Math.round(total).toLocaleString('en-IN')}`,
-    };
-}
-
-function calculatePathDistance(edgeIds) {
-    return edgeIds.reduce((total, edgeId) => {
-        const edge = PIPELINE_EDGES.find(e => e.id === edgeId);
-        return total + (edge ? edge.distance : 0);
-    }, 0);
 }
 
 module.exports = {
     dijkstra,
-    findOptimalConnectionRoute,
-    traceDownstream,
-    findAllPaths,
+    findOptimalConnectionRoute
 };

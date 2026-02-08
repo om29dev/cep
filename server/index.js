@@ -747,13 +747,84 @@ const contaminationAnalyzer = require('./utils/contaminationAnalyzer');
 const dijkstraUtils = require('./utils/dijkstra');
 
 // 1. Get Pipeline Network Data (Nodes, Edges, Areas)
-app.get('/api/data/pipeline', (req, res) => {
-    res.json({
-        nodes: pipelineData.PIPELINE_NODES,
-        edges: pipelineData.PIPELINE_EDGES,
-        areas: pipelineData.PCMC_AREAS,
-        nodeTypes: pipelineData.NODE_TYPES
-    });
+app.get('/api/data/pipeline', async (req, res) => {
+    try {
+        const graph = await pipelineData.buildPipelineGraph();
+
+        // OPTIMIZATION: Send only meaningful nodes first + limit edges
+        // 1. Get all Nodes
+        const allNodes = Object.values(graph);
+
+        // 2. Filter: Infrastructure Nodes always, Pipe Nodes if they are connected to critical infra
+        // For now, let's send ALL nodes but be mindful of size. 20k is a lot for Leaflet markers.
+        // We will send only infrastructure nodes as "nodes" for markers, and ALL pipes as "edges".
+        // The frontend renders markers for 'nodes' array.
+
+        const infrastructureNodes = allNodes.filter(n =>
+            n.type === 'reservoir' ||
+            n.type === 'esr' ||
+            n.type === 'pump' ||
+            n.type === 'valve' ||
+            n.type === 'junction' // Re-enabled junctions
+        );
+
+        // DEBUG LOGGING
+        const typeCounts = {};
+        infrastructureNodes.forEach(n => { typeCounts[n.type] = (typeCounts[n.type] || 0) + 1; });
+        console.log("Sending Nodes to Frontend:", typeCounts);
+
+        // Map node objects to frontend format
+        const nodes = infrastructureNodes.map(n => ({
+            id: n.id,
+            type: n.type,
+            name: n.name,
+            coords: n.coords,
+            capacity: n.capacity,
+            status: n.status,
+            area: n.area
+        }));
+
+        const edges = [];
+        const processedEdges = new Set();
+
+        // Limit edges to prevent browser crash (e.g., max 5000 segments or just critical mains)
+        // Or send all if we assume the user has a good PC. Leaflet canvas renderer handles ~10k lines okay.
+        // Let's filter for larger diameter pipes for the "Overview"
+
+        Object.values(graph).forEach(node => {
+            if (!node.neighbors) return;
+
+            node.neighbors.forEach(neighbor => {
+                if (processedEdges.has(neighbor.edgeId)) return;
+
+                const targetNode = graph[neighbor.nodeId];
+                // Only add if both nodes exist (sanity check)
+                if (targetNode) {
+                    edges.push({
+                        id: neighbor.edgeId,
+                        from: node.id,
+                        to: neighbor.nodeId,
+                        diameter: neighbor.diameter,
+                        distance: neighbor.distance,
+                        status: 'active',
+                        fromCoords: node.coords,
+                        toCoords: targetNode.coords
+                    });
+                    processedEdges.add(neighbor.edgeId);
+                }
+            });
+        });
+
+        res.json({
+            nodes: nodes, // reduced set
+            edges: edges,
+            areas: pipelineData.PCMC_AREAS,
+            nodeTypes: pipelineData.NODE_TYPES
+        });
+    } catch (err) {
+        console.error("Error fetching pipeline data:", err);
+        res.status(500).json({ error: "Failed to load pipeline data" });
+    }
 });
 
 // 1.1 Identify Area/Ward (Offline GIS)
@@ -788,12 +859,12 @@ app.post('/api/analysis/correlate', verifyToken, async (req, res) => {
 });
 
 // 3. Optimal Route Planning (Dijkstra)
-app.post('/api/analysis/route', verifyToken, (req, res) => {
+app.post('/api/analysis/route', verifyToken, async (req, res) => {
     try {
         const { lat, lng } = req.body;
         if (!lat || !lng) return res.status(400).json({ error: 'Coordinates required' });
 
-        const result = dijkstraUtils.findOptimalConnectionRoute(lat, lng);
+        const result = await dijkstraUtils.findOptimalConnectionRoute(lat, lng);
         res.json(result);
     } catch (err) {
         console.error('Routing error:', err);
@@ -943,5 +1014,49 @@ app.post('/api/guest/generate-letter', async (req, res) => {
     }
 });
 
+
+// 8. Max Flow Analysis (Bottleneck Detection)
+const MaxFlowMinCut = require('./utils/maxFlowMinCut');
+
+app.get('/api/analysis/max-flow', verifyToken, async (req, res) => {
+    try {
+        const { source, sink } = req.query;
+
+        if (!source || !sink) {
+            return res.status(400).json({ error: 'Source and Sink Node IDs are required.' });
+        }
+
+        const solver = new MaxFlowMinCut();
+        await solver.init(); // Loads graph from JSON
+
+        console.log(`Running Max Flow Analysis: ${source} -> ${sink}`);
+
+        // 1. Calculate Max Flow
+        const flowResult = await solver.calculateMaxFlow(source, sink);
+        if (flowResult.error) {
+            return res.status(400).json(flowResult);
+        }
+
+        // 2. Identify Bottlenecks (Min-Cut)
+        const cutResult = await solver.getMinCut(source, sink);
+
+        res.json({
+            success: true,
+            maxFlow: flowResult.maxFlow,
+            bottlenecks: cutResult.minCutEdges,
+            reachableNodesCount: cutResult.reachableNodes.length,
+            message: `Max potential flow is ${flowResult.maxFlow} units. Found ${cutResult.minCutEdges.length} bottleneck segments.`
+        });
+
+    } catch (err) {
+        console.error('Max Flow Analysis error:', err);
+        res.status(500).json({ error: 'Max Flow calculation failed.' });
+    }
+});
+
 const PORT = 5000;
-app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT}`);
+    // Pre-load graph for performance
+    require('./data/pcmcPipelineData').buildPipelineGraph();
+});

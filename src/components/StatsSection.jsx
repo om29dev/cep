@@ -92,7 +92,7 @@ const StatsSection = () => {
             <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1 }}>
                 <Grid container spacing={4} sx={{ mt: 4 }}>
                     {statItems.map((stat, index) => (
-                        <Grid item xs={6} md={3} key={index}>
+                        <Grid size={{ xs: 6, md: 3 }} key={index}>
                             <motion.div
                                 initial={{ opacity: 0, y: 30 }}
                                 whileInView={{ opacity: 1, y: 0 }}

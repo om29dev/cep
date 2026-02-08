@@ -3,7 +3,7 @@
  * Server-side version (CommonJS)
  */
 
-const { getHaversineDistance, PIPELINE_NODES, PIPELINE_EDGES, findNearestNode } = require('../data/pcmcPipelineData');
+const { getHaversineDistance, findNearestNode } = require('../data/pcmcPipelineData');
 const { traceDownstream, dijkstra } = require('./dijkstra');
 
 // ============================================================================
@@ -119,11 +119,16 @@ function correlateComplaints(complaints, radiusKm = CORRELATION_RADIUS_KM) {
     return clusters.sort((a, b) => b.riskScore - a.riskScore);
 }
 
-function analyzeContaminationSource(complaint, allComplaints) {
+const { buildPipelineGraph } = require('../data/pcmcPipelineData');
+
+async function analyzeContaminationSource(complaint, allComplaints) {
+    const graph = await buildPipelineGraph();
+    const PIPELINE_NODES = Object.values(graph);
+
     const coords = parseCoords(complaint.location);
     if (!coords) return null;
 
-    const { node: nearestNode, distance } = findNearestNode(coords[0], coords[1]);
+    const { node: nearestNode, distance } = await findNearestNode(coords[0], coords[1]);
 
     // 1. Check for nearby Leakage Complaints (Existing logic)
     const leakageComplaints = allComplaints.filter(c => {
@@ -135,14 +140,14 @@ function analyzeContaminationSource(complaint, allComplaints) {
         return dist <= CORRELATION_RADIUS_KM;
     });
 
-    const upstreamNodes = nearestNode ? findUpstreamNodes(nearestNode.id) : [];
+    const upstreamNodes = nearestNode ? await findUpstreamNodes(nearestNode.id, graph) : [];
 
     const potentialSources = [];
 
     // Add Leakage Complaints as sources
-    leakageComplaints.forEach(leak => {
+    for (const leak of leakageComplaints) {
         const leakCoords = parseCoords(leak.location);
-        const { node: leakNode } = findNearestNode(leakCoords[0], leakCoords[1]);
+        const { node: leakNode } = await findNearestNode(leakCoords[0], leakCoords[1]);
 
         potentialSources.push({
             type: 'COMPLAINT',
@@ -152,7 +157,7 @@ function analyzeContaminationSource(complaint, allComplaints) {
             likelySource: upstreamNodes.some(n => n.id === leakNode?.id),
             coordinates: leakCoords
         });
-    });
+    }
 
     // 2. Check for Infrastructure Hazards (New Logic)
     // Find nearby valves or junctions that might be points of failure
@@ -431,17 +436,26 @@ function generateContaminationRecommendation(complaint, sources) {
         'Collect samples for laboratory analysis.';
 }
 
-function findUpstreamNodes(nodeId, visited = new Set()) {
+async function findUpstreamNodes(nodeId, graph) {
     const upstream = [];
-    const sources = PIPELINE_NODES.filter(n => n.type === 'reservoir' || n.type === 'esr');
+    const sources = Object.values(graph).filter(n => n.type === 'reservoir' || n.type === 'esr');
 
-    sources.forEach(source => {
-        const path = dijkstra(source.id, nodeId);
+    for (const source of sources) {
+        // Pass graph to avoid rebuilding it
+        const path = await dijkstra(source.id, nodeId, {}, graph);
         if (path.success) {
-            upstream.push(...path.pathNodes);
+            // dijkstra returns .path (array of IDs) or something?
+            // Checking dijkstra.js again: returns { success, path, edges, totalDistance, nodeCount }
+            // path is array of IDs.
+            // But code below tries `path.pathNodes`.
+            // dijkstra.js (Step 178) does NOT return `pathNodes`. It returns `path` (IDs).
+            // So we need to map IDs to nodes using the graph.
+            const nodes = path.path.map(id => graph[id]).filter(n => n);
+            upstream.push(...nodes);
         }
-    });
+    }
 
+    // Return unique nodes by ID
     return [...new Map(upstream.map(n => [n.id, n])).values()];
 }
 

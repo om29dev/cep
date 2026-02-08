@@ -38,19 +38,26 @@ const GoogleTranslate = () => {
     useEffect(() => {
         // Build the language codes string for Google Translate
         const langCodes = languages.map(l => l.code).join(',');
+        let retryCount = 0;
+        const maxRetries = 3;
+        const retryDelay = 2000; // 2 seconds
 
-        // Load Google Translate script
+        // Load Google Translate script with retry logic
         const addScript = () => {
             window.googleTranslateElementInit = () => {
-                new window.google.translate.TranslateElement(
-                    {
-                        pageLanguage: 'en',
-                        includedLanguages: langCodes,
-                        layout: window.google.translate.TranslateElement.InlineLayout.SIMPLE,
-                        autoDisplay: false,
-                    },
-                    'google_translate_element_hidden'
-                );
+                try {
+                    new window.google.translate.TranslateElement(
+                        {
+                            pageLanguage: 'en',
+                            includedLanguages: langCodes,
+                            layout: window.google.translate.TranslateElement.InlineLayout.SIMPLE,
+                            autoDisplay: false,
+                        },
+                        'google_translate_element_hidden'
+                    );
+                } catch (error) {
+                    console.warn('Google Translate initialization failed:', error);
+                }
             };
 
             const existingScript = document.querySelector('script[src*="translate.google.com"]');
@@ -58,6 +65,27 @@ const GoogleTranslate = () => {
                 const script = document.createElement('script');
                 script.src = 'https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit';
                 script.async = true;
+
+                // Error handling with retry logic
+                script.onerror = () => {
+                    console.warn(`Google Translate script failed to load (attempt ${retryCount + 1}/${maxRetries})`);
+                    if (retryCount < maxRetries) {
+                        retryCount++;
+                        // Remove failed script
+                        script.remove();
+                        // Retry after delay
+                        setTimeout(() => {
+                            addScript();
+                        }, retryDelay);
+                    } else {
+                        console.error('Google Translate failed to load after multiple attempts. Translation may not work.');
+                    }
+                };
+
+                script.onload = () => {
+                    console.log('Google Translate script loaded successfully');
+                };
+
                 document.body.appendChild(script);
             } else if (window.google && window.google.translate) {
                 window.googleTranslateElementInit();
