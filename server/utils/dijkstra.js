@@ -147,9 +147,9 @@ async function findOptimalConnectionRoute(lat, lng) {
         }
     });
 
-    // Sort by distance (closest first)
+    // Increase candidate search depth significantly to find a connected node
     candidates.sort((a, b) => a.dist - b.dist);
-    const topCandidates = candidates.slice(0, 5); // Check top 5 closest infrastructure points
+    const topCandidates = candidates.slice(0, 100); // Check top 100 closest infrastructure points
 
     let route = null;
     let nearestNode = null; // This will become our actual connection point
@@ -161,55 +161,28 @@ async function findOptimalConnectionRoute(lat, lng) {
         console.log(`Found ${topCandidates.length} nearby infrastructure candidates. Checking connectivity...`);
 
         for (const cand of topCandidates) {
-            console.log(`Checking Candidate: ${cand.node.id} (${cand.node.type}) @ ${Math.round(cand.dist * 1000)}m...`);
+            // Optimization: Prioritize 'junction' type slightly if dists are very close?
+            // For now, strict distance is best for cost correctness.
 
             // Check if this node connects to ANY water source
+            // Pass preferLargeDiameter: false because we just want ANY valid connection.
             const pathResult = await findPathToAnySource(cand.node.id, graph, { preferLargeDiameter: false });
 
             if (pathResult.success) {
-                console.log(`  -> Connected! Source: ${pathResult.foundSource.id}`);
+                console.log(`  -> Connected! Connection: ${cand.node.id} (${cand.node.type}) Source: ${pathResult.foundSource.id}`);
                 route = pathResult;
                 nearestNode = cand.node;
                 finalSource = pathResult.foundSource;
                 minDist = cand.dist;
-                break; // Stop at the first (closest) valid connection
-            } else {
-                console.log(`  -> Isolated (no path to source). Skipping.`);
+                break; // Stop at the first (closest) valid connection found
             }
         }
     }
 
-    // FALLBACK: If all local infrastructure is isolated (or none found), connect directly to nearest Source
+    // If still no route found after checking 100 candidates, then we truly are isolated.
     if (!route) {
-        console.log("All nearby pipes are isolated or none found. Connecting DIRECTLY to nearest Water Source...");
-
-        let nearestSource = null;
-        let minSourceDist = Infinity;
-
-        Object.values(graph).forEach(node => {
-            if (node.type === 'reservoir' || node.type === 'esr') {
-                const d = getHaversineDistance(lat, lng, node.coords[0], node.coords[1]);
-                if (d < minSourceDist) { minSourceDist = d; nearestSource = node; }
-            }
-        });
-
-        if (nearestSource) {
-            // Create a "dummy" route of 0 length since we are connecting directly to the source
-            // The "New Pipe Required" will cover the entire distance from User -> Source
-            route = {
-                success: true,
-                path: [nearestSource.id], // Path is just the source itself
-                edges: [],
-                totalDistance: 0
-            };
-            nearestNode = nearestSource;
-            finalSource = nearestSource;
-            minDist = minSourceDist;
-            fallbackUsed = true;
-            console.log(`Fallback: Direct connection to Source ${nearestSource.id} @ ${Math.round(minDist * 1000)}m`);
-        } else {
-            return { success: false, error: 'No water sources found in the entire network.' };
-        }
+        console.log("All nearby infrastructure nodes are isolated/disconnected from water sources.");
+        return { success: false, error: 'Cannot find a connected water pipeline nearby. The local network seems isolated.' };
     }
 
     // 3. Reverse the path (Source -> Target)

@@ -168,12 +168,14 @@ class MaxFlowMinCut {
                 const v = neighbor.nodeId;
 
                 if (visited.has(u) && !visited.has(v)) {
+                    const cap = Math.round((neighbor.diameter * neighbor.diameter) / 1000);
                     minCutEdges.push({
                         id: neighbor.edgeId,
                         from: u,
                         to: v,
                         diameter: neighbor.diameter,
-                        // distance: neighbor.distance
+                        capacity: cap,
+                        flow: cap // Min-cut edges are saturated bottlenecks
                     });
                 }
             });
