@@ -1174,9 +1174,9 @@ const NewConnectionPlanner = ({ isOpen, onClose, onPlanRoute, targetCoords, onPi
     const [pipeMaterial, setPipeMaterial] = useState('hdpe');
 
     const PIPE_COSTS = {
-        'hdpe': { label: 'HDPE (110mm)', rate: 850 },
-        'pvc': { label: 'PVC (110mm)', rate: 450 },
-        'di': { label: 'Ductile Iron (100mm)', rate: 1800 }
+        'hdpe': { label: 'HDPE (110mm)', rate: 1200, material: 400, civil: 800 },
+        'pvc': { label: 'PVC (110mm)', rate: 850, material: 250, civil: 600 },
+        'di': { label: 'Ductile Iron (150mm)', rate: 2500, material: 1500, civil: 1000 }
     };
 
     // Reset result when target changes
@@ -1266,7 +1266,7 @@ const NewConnectionPlanner = ({ isOpen, onClose, onPlanRoute, targetCoords, onPi
                                 fullWidth
                                 size="small"
                                 SelectProps={{ native: true }}
-                                helperText={`Cost Estimate: ₹${PIPE_COSTS[pipeMaterial].rate}/m`}
+                                helperText={`Cost Estimate: ₹${PIPE_COSTS[pipeMaterial].material} (Pipe) + ₹${PIPE_COSTS[pipeMaterial].civil} (Civil) = ₹${PIPE_COSTS[pipeMaterial].rate}/m`}
                             >
                                 {Object.entries(PIPE_COSTS).map(([key, config]) => (
                                     <option key={key} value={key}>
@@ -1330,7 +1330,7 @@ const NewConnectionPlanner = ({ isOpen, onClose, onPlanRoute, targetCoords, onPi
                                                 Total Distance
                                             </Typography>
                                             <Typography variant="body1" fontWeight={600}>
-                                                {routeResult.totalDistance} km
+                                                {(parseFloat(routeResult.totalDistance) + (routeResult.newPipeRequired?.estimatedLength || 0) / 1000).toFixed(2)} km
                                             </Typography>
                                         </Paper>
                                     </Grid>
@@ -1346,14 +1346,26 @@ const NewConnectionPlanner = ({ isOpen, onClose, onPlanRoute, targetCoords, onPi
                                     </Grid>
                                     <Grid size={12}>
                                         <Paper sx={{ p: 2, bgcolor: 'primary.50', border: '1px solid', borderColor: 'primary.200' }}>
-                                            <Typography variant="caption" color="text.secondary">
-                                                Est. Connection Cost ({pipeMaterial.toUpperCase()})
+                                            <Typography variant="caption" color="text.secondary" gutterBottom>
+                                                Cost Formula (Per Meter)
                                             </Typography>
-                                            <Typography variant="body1" fontWeight={700} color="primary.main">
-                                                ₹ {((routeResult.newPipeRequired?.estimatedLength || 0) * PIPE_COSTS[pipeMaterial].rate).toLocaleString()}
-                                                <Typography component="span" variant="caption" sx={{ ml: 1, display: 'block', color: 'text.secondary' }}>
-                                                    {routeResult.isFallback && <span style={{ color: '#f59e0b' }}>⚠️ Nearest junction unreachable. Connected to pipe/valve.</span>}
+                                            <Typography variant="body2" fontWeight={600} sx={{ fontFamily: 'monospace', bgcolor: 'white', p: 1, borderRadius: 1, border: '1px dashed #ccc' }}>
+                                                ₹{PIPE_COSTS[pipeMaterial].material} (Pipe) + ₹{PIPE_COSTS[pipeMaterial].civil} (Civil) = <span style={{ color: '#15803d', fontWeight: 'bold' }}>₹{PIPE_COSTS[pipeMaterial].rate}/m</span>
+                                            </Typography>
+
+                                            <Divider sx={{ my: 1.5 }} />
+
+                                            <Box display="flex" justifyContent="space-between" alignItems="center">
+                                                <Typography variant="body2" color="text.secondary">
+                                                    Total Estimate ({routeResult.newPipeRequired?.estimatedLength}m)
                                                 </Typography>
+                                                <Typography variant="h6" fontWeight={700} color="primary.main">
+                                                    ₹ {((routeResult.newPipeRequired?.estimatedLength || 0) * PIPE_COSTS[pipeMaterial].rate).toLocaleString()}
+                                                </Typography>
+                                            </Box>
+
+                                            <Typography component="span" variant="caption" sx={{ mt: 1, display: 'block', color: 'text.secondary' }}>
+                                                {routeResult.isFallback && <span style={{ color: '#f59e0b' }}>⚠️ Nearest junction unreachable. Connected to pipe/valve.</span>}
                                             </Typography>
                                         </Paper>
                                     </Grid>

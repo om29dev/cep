@@ -222,11 +222,11 @@ async function findOptimalConnectionRoute(lat, lng) {
         totalDistance: route.totalDistance,
         isFallback: fallbackUsed,
         newPipeRequired: {
-            estimatedLength: Math.round(minDist * 1000),
+            estimatedLength: Math.round(minDist * 1000 * 1.35), // 1.35x Tortuosity Factor for road distance
             // Default calculation, frontend can override based on selection
             estimatedCost: {
-                raw: Math.round(minDist * 1000 * 850),
-                formatted: `₹${(minDist * 1000 * 850).toLocaleString()}`
+                raw: Math.round(minDist * 1000 * 1.35 * 1200), // Defaulting to HDPE rate approx
+                formatted: `₹${(minDist * 1000 * 1.35 * 1200).toLocaleString()}`
             }
         }
     };
@@ -354,12 +354,30 @@ async function findPathToAnySource(startNodeId, graph, options = {}) {
     // Let's return [ConnectionNode, ..., Source] (Target -> Source).
     // Reversing [Source, ..., ConnectionNode] gives [ConnectionNode, ..., Source].
 
+    // Verify total physical distance
+    let totalPhysicalDistance = 0;
+    let curr = foundSourceId;
+    while (curr && previous[curr]) {
+        const prev = previous[curr];
+        const node = graph[curr];
+        if (node) {
+            const edge = node.neighbors.find(n => n.nodeId === prev);
+            if (edge) {
+                totalPhysicalDistance += edge.distance;
+                // console.log(`Segment ${curr}->${prev}: ${edge.distance.toFixed(3)}km`);
+            }
+        }
+        curr = prev;
+    }
+
+    console.log(`Path Found! Dijkstra Cost: ${distances[foundSourceId].toFixed(3)}, Physical Dist (Verified): ${totalPhysicalDistance.toFixed(3)} km`);
+
     return {
         success: true,
         path: path.reverse(), // Now [ConnectionNode, ..., Source]
         edges: edges.reverse(),
         foundSource: graph[foundSourceId],
-        totalDistance: distances[foundSourceId] // Approx distance (weighted)
+        totalDistance: totalPhysicalDistance // Return verified physical distance
     };
 }
 
