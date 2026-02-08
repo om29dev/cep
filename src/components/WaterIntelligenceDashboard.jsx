@@ -1512,7 +1512,7 @@ const ResolveDialog = ({ open, onClose, target, type, onSubmit }) => {
 // MAX FLOW ANALYSIS COMPONENT
 // ============================================================================
 
-const MaxFlowAnalysisDialog = ({ isOpen, onClose, pipelineData, onResultsFound, pickingMode, setPickingMode }) => {
+const MaxFlowAnalysisDialog = ({ isOpen, onClose, pipelineData, onResultsFound, pickingMode, setPickingMode, savedAnalyses, onDeleteAnalysis }) => {
     const [sourceId, setSourceId] = useState('');
     const [sinkId, setSinkId] = useState('');
     const [result, setResult] = useState(null);
@@ -1568,15 +1568,15 @@ const MaxFlowAnalysisDialog = ({ isOpen, onClose, pipelineData, onResultsFound, 
 
     const handleClose = () => {
         setResult(null);
-        // We keep the map bottlenecks visible unless specifically cleared?
-        // Or clear them on close? Let's clear on close for a clean UI.
-        onResultsFound?.([]);
+        // Do not clear map results on close, user might want to see them while using other tools
+        // But if they re-open, we might want to reset or show previous state.
+        // For now, let's keep map state as is.
         onClose();
     };
 
     return (
         <Dialog
-            open={isOpen && !pickingMode} // Hide dialog when picking 
+            open={isOpen && !pickingMode} // Hide dialog when picking
             onClose={handleClose}
             maxWidth="sm"
             fullWidth
@@ -1604,6 +1604,7 @@ const MaxFlowAnalysisDialog = ({ isOpen, onClose, pipelineData, onResultsFound, 
                             onChange={(e) => setSourceId(e.target.value)}
                             SelectProps={{ native: true }}
                             fullWidth
+                            size="small"
                         >
                             <option value="">Select Source...</option>
                             {sourceOptions.map(n => (
@@ -1615,7 +1616,7 @@ const MaxFlowAnalysisDialog = ({ isOpen, onClose, pipelineData, onResultsFound, 
                         <Tooltip title="Pick on Map">
                             <IconButton
                                 color="primary"
-                                sx={{ mt: 1, border: '1px solid', borderColor: 'divider' }}
+                                sx={{ border: '1px solid', borderColor: 'divider' }}
                                 onClick={() => setPickingMode({ type: 'source' })}
                             >
                                 <MapPin size={20} />
@@ -1631,11 +1632,12 @@ const MaxFlowAnalysisDialog = ({ isOpen, onClose, pipelineData, onResultsFound, 
                             placeholder="Enter Node ID (e.g., junction_123)"
                             helperText="Copy ID from map popup or use Pick on Map"
                             fullWidth
+                            size="small"
                         />
                         <Tooltip title="Pick on Map">
                             <IconButton
                                 color="primary"
-                                sx={{ mt: 1, border: '1px solid', borderColor: 'divider' }}
+                                sx={{ border: '1px solid', borderColor: 'divider' }}
                                 onClick={() => setPickingMode({ type: 'sink' })}
                             >
                                 <MapPin size={20} />
@@ -1648,10 +1650,114 @@ const MaxFlowAnalysisDialog = ({ isOpen, onClose, pipelineData, onResultsFound, 
                         size="large"
                         onClick={handleAnalyze}
                         disabled={loading || !sourceId || !sinkId}
-                        startIcon={loading ? <CircularProgress size={20} /> : <TrendingUp />}
+                        fullWidth
                     >
-                        {loading ? 'Analyzing...' : 'Calculate Max Flow'}
+                        {loading ? 'Analyzing Network...' : 'Calculate Max Flow Capacity'}
                     </Button>
+
+                    {loading && (
+                        <Box sx={{ textAlign: 'center', py: 2 }}>
+                            <CircularProgress size={30} />
+                            <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
+                                Computing cuts and flows...
+                            </Typography>
+                        </Box>
+                    )}
+
+                    {result && result.success && (
+                        <Box sx={{ bgcolor: 'secondary.100', p: 2, borderRadius: 2 }}>
+                            <Typography variant="subtitle2" fontWeight={700} color="secondary.800">
+                                Analysis Result:
+                            </Typography>
+                            <Box display="flex" justifyContent="space-between" mt={1}>
+                                <Typography variant="body2">Max Flow Possible:</Typography>
+                                <Typography variant="body1" fontWeight={700}>
+                                    {result.maxFlow} units
+                                </Typography>
+                            </Box>
+                            <Box display="flex" justifyContent="space-between" mt={0.5}>
+                                <Typography variant="body2">Bottleneck Edges:</Typography>
+                                <Typography variant="body1" fontWeight={700} color="error.main">
+                                    {result.bottlenecks?.length || 0} segments (RED)
+                                </Typography>
+                            </Box>
+
+                            {/* Save Analysis Button */}
+                            <Button
+                                variant="outlined"
+                                color="secondary"
+                                size="small"
+                                fullWidth
+                                sx={{ mt: 2 }}
+                                startIcon={<TrendingUp size={16} />}
+                                onClick={() => {
+                                    // Construct a save object
+                                    const saveObj = {
+                                        sourceId,
+                                        sinkId,
+                                        maxFlow: result.maxFlow,
+                                        bottlenecks: result.bottlenecks,
+                                        success: true, // Ensure UI renders this result as valid
+                                        timestamp: new Date().toISOString()
+                                    };
+                                    onResultsFound?.(result.bottlenecks || [], saveObj); // Pass save object as 2nd arg
+                                }}
+                            >
+                                Save Analysis Result
+                            </Button>
+                        </Box>
+                    )}
+
+                    {/* Saved Analyses List */}
+                    {savedAnalyses && savedAnalyses.length > 0 && (
+                        <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid #e5e7eb' }}>
+                            <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                                💾 Saved Analyses ({savedAnalyses.length})
+                            </Typography>
+                            <Stack spacing={1} sx={{ maxHeight: 200, overflowY: 'auto' }}>
+                                {savedAnalyses.map((analysis, idx) => (
+                                    <Paper
+                                        key={idx}
+                                        variant="outlined"
+                                        sx={{
+                                            p: 1.5,
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            bgcolor: result === analysis ? 'secondary.50' : 'background.paper',
+                                            cursor: 'pointer',
+                                            '&:hover': { bgcolor: 'secondary.50' }
+                                        }}
+                                        onClick={() => {
+                                            setResult(analysis);
+                                            setSourceId(analysis.sourceId);
+                                            setSinkId(analysis.sinkId);
+                                            onResultsFound?.(analysis.bottlenecks || []);
+                                        }}
+                                    >
+                                        <Box>
+                                            <Typography variant="body2" fontWeight={600}>
+                                                Max Flow: {analysis.maxFlow}
+                                            </Typography>
+                                            <Typography variant="caption" color="text.secondary">
+                                                {new Date(analysis.timestamp).toLocaleTimeString()} • {analysis.bottlenecks?.length} bottlenecks
+                                            </Typography>
+                                        </Box>
+                                        <IconButton
+                                            size="small"
+                                            color="error"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onDeleteAnalysis?.(idx);
+                                            }}
+                                        >
+                                            <X size={16} />
+                                        </IconButton>
+                                    </Paper>
+                                ))}
+                            </Stack>
+                        </Box>
+                    )}
                 </Stack>
 
                 {result && (
@@ -1742,6 +1848,7 @@ const WaterIntelligenceDashboard = () => {
     const [prioritized, setPrioritized] = useState({ critical: [], high: [], medium: [], low: [], all: [] });
     const [clusters, setClusters] = useState([]);
     const [stats, setStats] = useState({ total: 0, critical: 0, correlatedClusters: 0, resolved: 0 });
+    const [savedAnalyses, setSavedAnalyses] = useState([]); // Saved Max Flow Analyses
 
     // Fetch initial data
     useEffect(() => {
@@ -2393,9 +2500,19 @@ const WaterIntelligenceDashboard = () => {
                 isOpen={maxFlowOpen}
                 onClose={() => setMaxFlowOpen(false)}
                 pipelineData={pipelineData}
-                onResultsFound={(b) => setBottlenecks(b)}
+                onResultsFound={(b, saveObj) => {
+                    setBottlenecks(b || []);
+                    if (saveObj) {
+                        setSavedAnalyses(prev => [...prev, saveObj]);
+                    }
+                }}
                 pickingMode={maxFlowPickingMode}
                 setPickingMode={setMaxFlowPickingMode}
+                savedAnalyses={savedAnalyses}
+                onDeleteAnalysis={(index) => {
+                    setSavedAnalyses(prev => prev.filter((_, i) => i !== index));
+                    if (bottlenecks.length > 0) setBottlenecks([]); // Clear map if deleted? Maybe optional.
+                }}
             />
 
             {/* CSS for custom animations */}
