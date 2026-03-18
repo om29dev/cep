@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <title>UIIS - Urban Issue Intelligence System | Report & Track Water Issues</title>
+  <!-- Hide Google Translate top banner for cleaner UX -->
+  <style>
+    .goog-te-banner-frame {
+      display: none !important;
+    }
+
+    body {
+      top: 0 !important;
+    }
+
+    .skiptranslate {
+      display: none !important;
+    }
+
+    body>.skiptranslate {
+      display: none !important;
+    }
+
+    #goog-gt-tt {
+      display: none !important;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+
+  <!-- Protect brand names from translation -->
+  <script>
+    // Function to wrap specific text with notranslate span
+    function protectBrandNames() {
+      const brandTerms = ['UIIS', 'Urban Issue Intelligence System', 'Urban Water Intelligence System'];
+
+      function walkTextNodes(node) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          let text = node.textContent;
+          let hasMatch = false;
+
+          for (const term of brandTerms) {
+            if (text.includes(term)) {
+              hasMatch = true;
+              break;
+            }
+          }
+
+          if (hasMatch && node.parentElement && !node.parentElement.classList.contains('notranslate')) {
+            let html = text;
+            for (const term of brandTerms) {
+              const regex = new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'g');
+              html = html.replace(regex, '<span class="notranslate">$1</span>');
+            }
+            if (html !== text) {
+              const span = document.createElement('span');
+              span.innerHTML = html;
+              node.parentElement.replaceChild(span, node);
+            }
+          }
+        } else if (node.nodeType === Node.ELEMENT_NODE &&
+          !['SCRIPT', 'STYLE', 'TEXTAREA', 'INPUT'].includes(node.tagName) &&
+          !node.classList.contains('notranslate')) {
+          for (const child of Array.from(node.childNodes)) {
+            walkTextNodes(child);
+          }
+        }
+      }
+
+      walkTextNodes(document.body);
+    }
+
+    // Run after page loads and after any dynamic content changes
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => setTimeout(protectBrandNames, 500));
+    } else {
+      setTimeout(protectBrandNames, 500);
+    }
+
+    // Also run when Google Translate activates
+    const observer = new MutationObserver((mutations) => {
+      let shouldRerun = false;
+      for (const mutation of mutations) {
+        if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+          shouldRerun = true;
+          break;
+        }
+      }
+      if (shouldRerun) {
+        setTimeout(protectBrandNames, 100);
+      }
+    });
+
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+  </script>
+</body>
+
+</html>
