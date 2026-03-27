@@ -127,6 +127,32 @@ const Navbar = () => {
     // Helper to check role safely
     const hasRole = (roleName) => user?.role?.toLowerCase() === roleName.toLowerCase();
 
+    const officerNavButtonSx = {
+        textTransform: 'none',
+        fontWeight: 600,
+        minHeight: 38,
+        px: 1.5,
+        py: 0,
+        lineHeight: 1.2,
+        '& .MuiButton-startIcon': {
+            marginRight: 1,
+        }
+    };
+
+    const officerPrimaryButtonSx = {
+        ...officerNavButtonSx,
+        fontWeight: 700,
+        background: 'linear-gradient(45deg, #0ea5e9 20%, #2563eb 90%)',
+        color: 'white',
+        borderRadius: 2,
+        px: 1.75,
+        boxShadow: 'none',
+        '&:hover': {
+            background: 'linear-gradient(45deg, #0284c7 20%, #1d4ed8 90%)',
+            boxShadow: 'none',
+        }
+    };
+
     return (
         <>
             <AppBar position="sticky" elevation={0} sx={{
@@ -283,7 +309,7 @@ const Navbar = () => {
                                                 to="/dashboard"
                                                 startIcon={<LayoutDashboard size={18} />}
                                                 color="inherit"
-                                                sx={{ textTransform: 'none', fontWeight: 600 }}
+                                                sx={officerNavButtonSx}
                                             >
                                                 Officer Dashboard
                                             </Button>
@@ -292,7 +318,7 @@ const Navbar = () => {
                                                 to="/officer-complaints"
                                                 startIcon={<ListChecks size={18} />}
                                                 color="inherit"
-                                                sx={{ textTransform: 'none', fontWeight: 600 }}
+                                                sx={officerNavButtonSx}
                                             >
                                                 Issues List
                                             </Button>
@@ -301,17 +327,7 @@ const Navbar = () => {
                                                 to="/water-intelligence"
                                                 startIcon={<BrainCircuit size={18} />}
                                                 color="inherit"
-                                                sx={{
-                                                    textTransform: 'none',
-                                                    fontWeight: 700,
-                                                    background: 'linear-gradient(45deg, #00D2FF 30%, #3A7BD5 90%)',
-                                                    color: 'white',
-                                                    borderRadius: 2,
-                                                    px: 2,
-                                                    '&:hover': {
-                                                        background: 'linear-gradient(45deg, #00D2FF 50%, #3A7BD5 100%)',
-                                                    }
-                                                }}
+                                                sx={officerPrimaryButtonSx}
                                             >
                                                 Water Intelligence
                                             </Button>
