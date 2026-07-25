@@ -43,6 +43,39 @@ class PriorityQueue {
 }
 
 /**
+ * Normalizes edge distance to kilometers.
+ * The graph currently contains mixed units:
+ * - OSM/base edges are in km
+ * - some seeded/emergency ESR edges are in meters
+ */
+function normalizeEdgeDistanceKm(rawDistance, fromNode = null, toNode = null) {
+    if (!Number.isFinite(rawDistance) || rawDistance < 0) {
+        return Infinity;
+    }
+
+    // Fast fallback when geometry is unavailable.
+    if (!fromNode?.coords || !toNode?.coords) {
+        return rawDistance > 10 ? rawDistance / 1000 : rawDistance;
+    }
+
+    const geoKm = getHaversineDistance(
+        fromNode.coords[0],
+        fromNode.coords[1],
+        toNode.coords[0],
+        toNode.coords[1]
+    );
+
+    // If stored distance is orders of magnitude larger than geometric separation,
+    // treat it as meters and convert to kilometers.
+    if (geoKm > 0 && rawDistance > Math.max(1, geoKm * 20)) {
+        return rawDistance / 1000;
+    }
+
+    // Secondary heuristic for missing/noisy geometry.
+    return rawDistance > 10 ? rawDistance / 1000 : rawDistance;
+}
+
+/**
  * Dijkstra's Algorithm to find shortest path between two nodes
  */
 async function dijkstra(startNodeId, endNodeId, options = {}, existingGraph = null) {
@@ -81,7 +114,10 @@ async function dijkstra(startNodeId, endNodeId, options = {}, existingGraph = nu
             if (avoidNodes.includes(neighbor.nodeId)) continue;
             if (avoidEdges.includes(neighbor.edgeId)) continue;
 
-            let weight = neighbor.distance;
+            const neighborNode = graph[neighbor.nodeId];
+            if (!neighborNode) continue;
+
+            let weight = normalizeEdgeDistanceKm(neighbor.distance, currentNode, neighborNode);
             if (preferLargeDiameter && neighbor.diameter) {
                 weight = weight * (1000 / neighbor.diameter);
             }
@@ -270,7 +306,10 @@ async function findPathToAnySource(startNodeId, graph, options = {}) {
         for (const neighbor of currentNode.neighbors) {
             if (visited.has(neighbor.nodeId)) continue;
 
-            let weight = neighbor.distance;
+            const neighborNode = graph[neighbor.nodeId];
+            if (!neighborNode) continue;
+
+            let weight = normalizeEdgeDistanceKm(neighbor.distance, currentNode, neighborNode);
             // Apply potential diameter preference (reversed logic? 
             // Usually large diameter = less friction = lower cost? 
             // In original Dijkstra: preferLargeDiameter -> weight / diameter (smaller weight = better).
@@ -360,10 +399,11 @@ async function findPathToAnySource(startNodeId, graph, options = {}) {
     while (curr && previous[curr]) {
         const prev = previous[curr];
         const node = graph[curr];
-        if (node) {
+        const prevNode = graph[prev];
+        if (node && prevNode) {
             const edge = node.neighbors.find(n => n.nodeId === prev);
             if (edge) {
-                totalPhysicalDistance += edge.distance;
+                totalPhysicalDistance += normalizeEdgeDistanceKm(edge.distance, node, prevNode);
                 // console.log(`Segment ${curr}->${prev}: ${edge.distance.toFixed(3)}km`);
             }
         }
